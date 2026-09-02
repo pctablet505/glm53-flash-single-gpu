@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400" role="img" aria-label="Routing skew measured two ways: aggregated across layers versus per layer. Top 35 percent of experts capture 43.2 percent aggregated but 74.3 percent per layer.">
+  <title>The same routing data, summed two ways</title>
+  <rect x="0" y="0" width="880" height="400" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="36" font-size="20" font-weight="600" fill="#eceff4">The same routing data, summed two ways</text>
+    <text x="28" y="58" font-size="12.5" fill="#9aa4b2">Share of expert activations captured by the hottest N% of experts &#183; the left bar of each pair is the mistake this project actually made</text>
+
+    <g stroke="#3d444d" stroke-width="1">
+      <line x1="90" y1="320" x2="856" y2="320"/>
+      <g stroke-dasharray="3 4">
+        <line x1="90" y1="270" x2="856" y2="270"/>
+        <line x1="90" y1="220" x2="856" y2="220"/>
+        <line x1="90" y1="170" x2="856" y2="170"/>
+        <line x1="90" y1="120" x2="856" y2="120"/>
+        <line x1="90" y1="70" x2="856" y2="70"/>
+      </g>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="end">
+      <text x="80" y="324">0%</text>
+      <text x="80" y="274">20%</text>
+      <text x="80" y="224">40%</text>
+      <text x="80" y="174">60%</text>
+      <text x="80" y="124">80%</text>
+      <text x="80" y="74">100%</text>
+    </g>
+
+    <rect x="640" y="76" width="14" height="14" rx="2" fill="#8b949e"/>
+    <text x="660" y="88" font-size="12" fill="#c9d1d9">aggregated across layers</text>
+    <rect x="640" y="98" width="14" height="14" rx="2" fill="#5fd08a"/>
+    <text x="660" y="110" font-size="12" fill="#c9d1d9">measured per layer</text>
+
+    <g>
+      <rect x="122" y="285" width="62" height="35"  rx="3" fill="#8b949e"/>
+      <rect x="196" y="223" width="62" height="97"  rx="3" fill="#5fd08a"/>
+      <rect x="312" y="239" width="62" height="81"  rx="3" fill="#8b949e"/>
+      <rect x="386" y="160" width="62" height="160" rx="3" fill="#5fd08a"/>
+      <rect x="502" y="212" width="62" height="108" rx="3" fill="#8b949e"/>
+      <rect x="576" y="134" width="62" height="186" rx="3" fill="#5fd08a"/>
+      <rect x="692" y="173" width="62" height="147" rx="3" fill="#8b949e"/>
+      <rect x="766" y="106" width="62" height="214" rx="3" fill="#5fd08a"/>
+    </g>
+    <g font-size="12" font-weight="600" text-anchor="middle">
+      <text x="153" y="277" fill="#c9d1d9">13.8%</text>
+      <text x="227" y="215" fill="#d7f5e4">38.9%</text>
+      <text x="343" y="231" fill="#c9d1d9">32.5%</text>
+      <text x="417" y="152" fill="#d7f5e4">64.1%</text>
+      <text x="533" y="204" fill="#c9d1d9">43.2%</text>
+      <text x="607" y="126" fill="#d7f5e4">74.3%</text>
+      <text x="723" y="165" fill="#c9d1d9">58.8%</text>
+      <text x="797" y="98"  fill="#d7f5e4">85.7%</text>
+    </g>
+    <g font-size="12.5" fill="#c9d1d9" text-anchor="middle">
+      <text x="190" y="340">hottest 10%</text>
+      <text x="380" y="340">hottest 25%</text>
+      <text x="570" y="340">hottest 35%</text>
+      <text x="760" y="340">hottest 50%</text>
+    </g>
+
+    <text x="28" y="372" font-size="12" fill="#9aa4b2">Different layers are hot on different experts, so summing per-expert counts across layers washes the skew out. The aggregate view said</text>
+    <text x="28" y="390" font-size="12" fill="#9aa4b2">&#8220;near-uniform routing, caching is capped at ~1.15x&#8221;, and a live dump agreed with it. It was an artifact of the summation, and it cost days.</text>
+  </g>
+</svg>

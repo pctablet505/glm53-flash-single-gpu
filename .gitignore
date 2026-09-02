@@ -1,0 +1,11 @@
+# Nothing here should ever contain credentials or large binaries.
+*.log
+*.sqlite*
+__pycache__/
+.venv*/
+*.safetensors
+*.pt
+*.gz
+.DS_Store
+# internal agent brief, not for publication
+SESSION-BRIEF-*.md

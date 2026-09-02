@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 430" width="880" height="430" role="img" aria-label="Decode throughput progression from 8.7 to 16.50 tokens per second, with a rejected 20.48 router-pruning result">
+  <title>Decode throughput, step by step</title>
+  <rect x="0" y="0" width="880" height="430" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="32" font-size="20" font-weight="600" fill="#eceff4">Decode throughput, one change at a time</text>
+    <text x="28" y="53" font-size="12.5" fill="#9aa4b2">tokens/s, single stream, max-num-seqs 1 &#183; each bar is a separate measured configuration, not a controlled A/B</text>
+
+    <g stroke="#3d444d" stroke-width="1">
+      <line x1="80" y1="340" x2="856" y2="340"/>
+      <g stroke-dasharray="3 4">
+        <line x1="80" y1="295" x2="856" y2="295"/>
+        <line x1="80" y1="250" x2="856" y2="250"/>
+        <line x1="80" y1="205" x2="856" y2="205"/>
+        <line x1="80" y1="160" x2="856" y2="160"/>
+        <line x1="80" y1="115" x2="856" y2="115"/>
+      </g>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="end">
+      <text x="70" y="344">0</text>
+      <text x="70" y="299">5</text>
+      <text x="70" y="254">10</text>
+      <text x="70" y="209">15</text>
+      <text x="70" y="164">20</text>
+      <text x="70" y="119">25</text>
+      <text x="70" y="74">30</text>
+    </g>
+    <text x="34" y="210" font-size="12" fill="#9aa4b2" transform="rotate(-90 34 210)" text-anchor="middle">tok/s</text>
+
+    <line x1="80" y1="79" x2="856" y2="79" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="7 5"/>
+    <text x="856" y="72" font-size="11.5" fill="#adb6c2" text-anchor="end">~29 tok/s &#8212; structural ceiling with infinite VRAM and zero PCIe traffic (offload-sensitivity fit)</text>
+
+    <rect x="99"  y="262" width="90" height="78"  rx="3" fill="#5a6472"/>
+    <rect x="227" y="243" width="90" height="97"  rx="3" fill="#6aa9ff" opacity="0.55"/>
+    <rect x="355" y="234" width="90" height="106" rx="3" fill="#6aa9ff" opacity="0.72"/>
+    <rect x="483" y="218" width="90" height="122" rx="3" fill="#6aa9ff" opacity="0.88"/>
+    <rect x="611" y="192" width="90" height="148" rx="3" fill="#5fd08a"/>
+    <rect x="739" y="156" width="90" height="184" rx="3" fill="none" stroke="#ff7b72" stroke-width="2" stroke-dasharray="6 4"/>
+
+    <g font-size="14" font-weight="600" fill="#eceff4" text-anchor="middle">
+      <text x="144" y="254">8.7</text>
+      <text x="272" y="235">10.77</text>
+      <text x="400" y="226">11.77</text>
+      <text x="528" y="210">13.53</text>
+      <text x="656" y="184" fill="#5fd08a">16.50</text>
+      <text x="784" y="148" fill="#ff7b72">20.48</text>
+    </g>
+
+    <g font-size="11" fill="#c9d1d9" text-anchor="middle">
+      <text x="144" y="360">Marlin,</text><text x="144" y="374">no MTP</text>
+      <text x="272" y="360">+ MTP-2</text><text x="272" y="374">(baseline)</text>
+      <text x="400" y="360">+ per-row copy_</text><text x="400" y="374">staging (eager)</text>
+      <text x="528" y="360">+ Triton gather,</text><text x="528" y="374">CUDA graphs back on</text>
+      <text x="656" y="360" fill="#5fd08a">+ frequency-pinned</text><text x="656" y="374" fill="#5fd08a">hot experts</text>
+      <text x="784" y="360" fill="#ff9a94">router pruning top-6</text><text x="784" y="374" fill="#ff9a94">NOT SHIPPED</text>
+    </g>
+
+    <text x="28" y="404" font-size="12" fill="#9aa4b2">16.50 was measured at 66 hot slots per layer (2026-09-01). Router pruning is +24% and visibly degrades output, so it is off by default.</text>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+# Fresh-prompt prefill measurement, shipped config, 2026-09-02T06:07:14+05:30
+# server pid 211628 launched from bare ./serve-opt.sh defaults (offload 125, 62 slots, breakable=0, VLLM_MOE_PREFILL_GROUPS=1, MTP-2)
+# salts 21/22/23 were never sent to this server before -> no prefix-cache reuse. streaming: TTFT = time to first content chunk.
+10k fresh #1   prompt_tokens=10313  TTFT=  5.82s  prefill=   1771 tok/s  decode_after= 18.2 tok/s  gen=60
+10k fresh #2   prompt_tokens=10314  TTFT=  5.96s  prefill=   1729 tok/s  decode_after= 18.2 tok/s  gen=60
+30k fresh      prompt_tokens=35571  TTFT= 22.57s  prefill=   1576 tok/s  decode_after= 18.4 tok/s  gen=60
+# short prompt control (14 tokens, zero-copy path):
+short prompt TTFT= 0.85s

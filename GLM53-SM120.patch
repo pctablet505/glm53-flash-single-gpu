@@ -1,0 +1,413 @@
+diff --git a/csrc/libtorch_stable/cache_kernels.cu b/csrc/libtorch_stable/cache_kernels.cu
+index bc8d1be2f..4b04b0b99 100644
+--- a/csrc/libtorch_stable/cache_kernels.cu
++++ b/csrc/libtorch_stable/cache_kernels.cu
+@@ -920,9 +920,17 @@ void concat_and_cache_mla(
+   if (kv_cache_dtype == "fp8_ds_mla") {
+     STD_TORCH_CHECK(kv_lora_rank == 512,
+                     "kv_lora_rank must be 512 for fp8_ds_mla");
+-    STD_TORCH_CHECK(pe_dim == 64, "pe_dim must be 64 for fp8_ds_mla");
+-    STD_TORCH_CHECK(kv_cache.size(2) == 656 / kv_cache.element_size(),
+-                    "kv_cache.size(2) must be 656 bytes for fp8_ds_mla");
++    // pe_dim == 0 is the NoPE case (GLM-5.3 sets qk_rope_head_dim=0); the
++    // entry is then just the 512 packed fp8 values plus 16 bytes of scales.
++    // DeepSeek's 64-dim RoPE adds 128 bytes on top, giving the familiar 656.
++    STD_TORCH_CHECK(pe_dim == 64 || pe_dim == 0,
++                    "pe_dim must be 64 (RoPE) or 0 (NoPE) for fp8_ds_mla, got ",
++                    pe_dim);
++    const int64_t ds_mla_entry_bytes = 512 + 16 + 2 * pe_dim;
++    STD_TORCH_CHECK(
++        kv_cache.size(2) == ds_mla_entry_bytes / kv_cache.element_size(),
++        "kv_cache.size(2) must be ", ds_mla_entry_bytes,
++        " bytes for fp8_ds_mla with pe_dim=", pe_dim);
+     STD_TORCH_CHECK(kv_c.element_size() == 2,
+                     "kv_c.element_size() must be 2 for fp8_ds_mla");
+     STD_TORCH_CHECK(k_pe.element_size() == 2,
+@@ -947,7 +955,12 @@ void concat_and_cache_mla(
+     // Lanes 0 and 16 of each warp write the scale values for that warp's tiles.
+     // The RoPE part (last 64 elements) is handled by another 1 warp (32
+     // threads). So in total, we use 3 warps (96 threads) per block.
+-    dim3 block(96);
++    //
++    // Size the RoPE warp from pe_dim rather than hardcoding it: with NoPE
++    // (pe_dim == 0) there is no RoPE data, and launching the extra 32 threads
++    // would read past an empty k_pe and write past the end of the 528-byte
++    // entry. Each RoPE thread handles two elements, so pe_dim/2 threads.
++    dim3 block(64 + pe_dim / 2);
+     DISPATCH_BY_KV_CACHE_DTYPE(kv_c.scalar_type(), kv_cache_dtype,
+                                CALL_CONCAT_AND_CACHE_DS_MLA);
+   } else {
+diff --git a/vllm/model_executor/layers/attention/mla_attention.py b/vllm/model_executor/layers/attention/mla_attention.py
+index 4536d2822..4ac3eff02 100644
+--- a/vllm/model_executor/layers/attention/mla_attention.py
++++ b/vllm/model_executor/layers/attention/mla_attention.py
+@@ -1219,9 +1219,17 @@ class MLAAttention(nn.Module, AttentionLayerBase):
+             # whose kernel page layout (656 B/token) differs from
+             # head_size * dtype_size.
+             kv_quant_mode=get_kv_quant_mode(self.kv_cache_dtype),
+-            # fp8_ds_mla: 656-byte custom layout (kv_lora_rank=512 +
+-            # qk_rope_head_dim=64, head_size=576). See flashmla_sparse.py.
+-            state_content_bytes=656 if self.kv_cache_dtype == "fp8_ds_mla" else None,
++            # fp8_ds_mla: custom layout of 512 packed fp8 values + 16 bytes
++            # of scales + 2 bytes per RoPE element. DeepSeek's
++            # qk_rope_head_dim=64 gives the familiar 656; a NoPE model such as
++            # GLM-5.3 has qk_rope_head_dim=0 and so needs 528. This was
++            # hardcoded to 656, which sized the cache for a RoPE tail the model
++            # does not have.
++            state_content_bytes=(
++                512 + 16 + 2 * self.qk_rope_head_dim
++                if self.kv_cache_dtype == "fp8_ds_mla"
++                else None
++            ),
+         )
+         if self.sliding_window is not None:
+             return SlidingWindowMLASpec(
+diff --git a/vllm/model_executor/layers/mhc.py b/vllm/model_executor/layers/mhc.py
+index d4bc224af..1d309d143 100644
+--- a/vllm/model_executor/layers/mhc.py
++++ b/vllm/model_executor/layers/mhc.py
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: Apache-2.0
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++import os
+ import inspect
+ 
+ import torch
+@@ -27,7 +28,14 @@ def _has_tilelang_mhc() -> bool:
+     return False
+ 
+ 
+-HAS_TILELANG_MHC = _has_tilelang_mhc()
++# VLLM_DISABLE_TILELANG_MHC=1 forces the torch/native MHC path. There is
++# precedent for these kernels being silently wrong on specific hardware (see
++# the gfx942 note above), and the hyper-connection ops carry GLM-5.3's whole
++# residual stream -- if they are wrong, every layer collapses and the model
++# emits one token forever with no error.
++HAS_TILELANG_MHC = _has_tilelang_mhc() and os.environ.get(
++    "VLLM_DISABLE_TILELANG_MHC", "0"
++) != "1"
+ HAS_AITER_MHC = is_aiter_found_and_supported()
+ 
+ 
+diff --git a/vllm/model_executor/layers/sparse_attn_indexer_kpool.py b/vllm/model_executor/layers/sparse_attn_indexer_kpool.py
+index 5924d9f49..07d89c0d1 100644
+--- a/vllm/model_executor/layers/sparse_attn_indexer_kpool.py
++++ b/vllm/model_executor/layers/sparse_attn_indexer_kpool.py
+@@ -553,8 +553,15 @@ def sparse_attn_indexer_kpool(
+             # expand each pool back to its kpool constituent tokens.
+             select_k = topk_tokens // index_kpool if index_kpool > 1 else topk_tokens
+             if index_kpool > 1:
+-                pool_topk = torch.empty(
+-                    (num_rows, select_k), dtype=torch.int32, device=logits.device
++                # -1, not uninitialized: top_k_per_row_prefill only writes the
++                # first min(select_k, valid) entries of each row, so a short row
++                # keeps whatever was in the buffer. Those garbage values are
++                # expanded into token indices below and attended to, which shows
++                # up as degenerate repeated output rather than a crash.
++                # topk_indices_buffer is already -1-filled for the same reason;
++                # the downstream `valid = pool_ids >= 0` check expects it.
++                pool_topk = torch.full(
++                    (num_rows, select_k), -1, dtype=torch.int32, device=logits.device
+                 )
+                 topk_dst = pool_topk
+             else:
+@@ -816,8 +823,12 @@ def sparse_attn_indexer_kpool(
+         # then expand each pool back to its kpool tokens.
+         select_k = topk_tokens // index_kpool if index_kpool > 1 else topk_tokens
+         if index_kpool > 1:
+-            pool_topk = torch.empty(
+-                (num_rows, select_k), dtype=torch.int32, device=logits.device
++            # Same reasoning as the prefill path above: persistent_topk /
++            # top_k_per_row only fill the valid prefix of each row, so an
++            # uninitialised buffer leaks garbage pool ids into the expansion.
++            # This is the decode path, i.e. every generated token.
++            pool_topk = torch.full(
++                (num_rows, select_k), -1, dtype=torch.int32, device=logits.device
+             )
+             topk_dst = pool_topk
+         else:
+diff --git a/vllm/model_executor/offloader/uva.py b/vllm/model_executor/offloader/uva.py
+index 5107870ff..2133f1119 100644
+--- a/vllm/model_executor/offloader/uva.py
++++ b/vllm/model_executor/offloader/uva.py
+@@ -61,21 +61,51 @@ class UVAOffloader(BaseOffloader):
+         modules = [
+             self._maybe_offload_to_cpu(module, prefix) for module in modules_generator
+         ]
+-        if self.cpu_offload_bytes > 0:
+-            logger.info(
+-                "Total CPU offloaded parameters: %s",
+-                format_gib(self.cpu_offload_bytes),
+-            )
++        # DIAGNOSTIC (2026-08-29): log unconditionally. The >0 guard meant a
++        # completely inert offloader printed nothing at all, so three runs
++        # tuned cpu_offload_gb while it was having no effect whatsoever.
++        logger.info(
++            "UVA offload summary: %s of %s budget, across %d module(s); "
++            "params filter=%s, uva=%s, pin=%s",
++            format_gib(self.cpu_offload_bytes),
++            format_gib(self.cpu_offload_max_bytes),
++            len(modules),
++            sorted(self.cpu_offload_params) or "<none: offload everything>",
++            self.uva_offloading,
++            self.pin_memory,
++        )
+         return modules
+ 
+     def _maybe_offload_to_cpu(self, module: nn.Module, prefix: str = "") -> nn.Module:
+         """Offload module parameters to CPU using UVA if budget allows."""
++        # DIAGNOSTIC: report the first two modules in full. Which of these
++        # three early-returns fires tells us the root cause directly.
++        dbg = getattr(self, "_dbg_seen", 0)
++        self._dbg_seen = dbg + 1
++
+         if (params := next(module.parameters(), None)) is None:
++            if dbg < 2:
++                logger.info("UVA dbg[%d] %s: NO PARAMETERS -> skipped",
++                            dbg, type(module).__name__)
+             return module
+ 
+         device = params.device
+ 
++        if dbg < 2:
++            names = [n for n, _ in module.named_parameters()]
++            matched = [n for n in names if any(
++                f".{q}." in f".{prefix}{n}." for q in self.cpu_offload_params
++            )] if self.cpu_offload_params else names
++            logger.info(
++                "UVA dbg[%d] %s: first-param device=%s, prefix=%r, "
++                "%d params, %d match filter; sample=%s; matched sample=%s",
++                dbg, type(module).__name__, device, prefix,
++                len(names), len(matched), names[:6], matched[:4],
++            )
++
+         if device == torch.device("cpu"):
++            if dbg < 2:
++                logger.info("UVA dbg[%d]: EARLY RETURN -- params already on CPU", dbg)
+             return module
+ 
+         if self.cpu_offload_bytes >= self.cpu_offload_max_bytes:
+@@ -108,6 +138,12 @@ class UVAOffloader(BaseOffloader):
+                 if not should_offload:
+                     continue
+ 
++            # NOTE: pinning here is a pessimisation for large weights. A
++            # pinned tensor comes from PyTorch's caching host allocator, which
++            # rounds to power-of-two blocks (2.42 GiB -> 4 GiB). Left unpinned,
++            # get_cuda_view_from_cpu_tensor below pins it itself with an
++            # exact-size cudaHostAlloc. Measured on GLM-5.3: 1.94x -> 1.13x
++            # host RSS. Keep VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY=1.
+             cpu_data = p.data.to(device="cpu")
+             if self.pin_memory:
+                 cpu_data = cpu_data.pin_memory()
+@@ -121,6 +157,25 @@ class UVAOffloader(BaseOffloader):
+             self.cpu_offload_bytes += p.data.numel() * p.data.element_size()
+             offloaded_parameters = True
+ 
++        if offloaded_parameters:
++            # Hand the freed blocks back to the driver. Moving a parameter to
++            # host drops its GPU storage, but the caching allocator keeps the
++            # block -- and under expandable_segments it extends the segment for
++            # the next layer instead of reusing it. Measured on GLM-5.3:
++            # gpu_reserved grew 4.06 GiB per MoE layer while gpu_alloc grew
++            # 0.30, so reserved-minus-live tracked the offloaded bytes exactly.
++            # Extrapolated over 43 MoE layers that is 175 GiB reserved on a
++            # 96 GiB card -- i.e. offloading bought nothing without this.
++            torch.cuda.empty_cache()
++            logger.info(
++                "UVA layer[%d] %s: host=%s gpu_alloc=%s gpu_reserved=%s",
++                getattr(self, "_dbg_seen", 0) - 1,
++                type(module).__name__,
++                format_gib(self.cpu_offload_bytes),
++                format_gib(torch.cuda.memory_allocated()),
++                format_gib(torch.cuda.memory_reserved()),
++            )
++
+         if offloaded_parameters and not self.uva_offloading:
+             original_forward = module.forward
+ 
+diff --git a/vllm/platforms/cuda.py b/vllm/platforms/cuda.py
+index 09071df51..adc39d498 100644
+--- a/vllm/platforms/cuda.py
++++ b/vllm/platforms/cuda.py
+@@ -129,10 +129,22 @@ def _get_backend_priorities(
+                 *sparse_backends,
+             ]
+         elif device_capability.major == 12:
+-            return [
++            # FLASHINFER_MLA_SPARSE_SM120 only implements DeepSeek's shape
++            # (512 latent + 64 RoPE, query 576). A rope-free MLA model such as
++            # GLM-5.3-Flash (query 512) has no kernel there, and with only
++            # these two entries the rope-free lane was never even considered
++            # (vllm-project/vllm#53963). The SM90 backend is the NoPE lane; it
++            # needs FlashInfer >= 0.6.18, which its own supports_combination
++            # feature-detects, so listing it here is safe on older installs.
++            sm12x = [
+                 AttentionBackendEnum.TRITON_MLA,
+                 AttentionBackendEnum.FLASHINFER_MLA_SPARSE_SM120,
+             ]
++            if head_size == 512:
++                sm12x.insert(0, AttentionBackendEnum.FLASHINFER_MLA_SPARSE_SM90)
++            else:
++                sm12x.append(AttentionBackendEnum.FLASHINFER_MLA_SPARSE_SM90)
++            return sm12x
+         else:
+             sparse_tail = [
+                 AttentionBackendEnum.FLASH_ATTN_MLA_SPARSE,
+@@ -745,7 +757,12 @@ class CudaPlatformBase(Platform):
+             major, _ = torch.cuda.get_device_capability(device)
+         except Exception:
+             return False
+-        return major >= 9
++        # SM12x excluded deliberately. vLLM enables Programmatic Dependent
++        # Launch for capability >= 9, which sweeps in SM120/SM121, including in
++        # the Triton kernels that carry KDA recurrent state -- 34 of GLM-5.3's
++        # 46 layers. PDL has not been validated on this silicon and corrupts
++        # that state; the same gate was needed on SM121 (DGX Spark).
++        return major >= 9 and major != 12
+ 
+ 
+ # NVML utils
+diff --git a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
+index 4de2c2f53..84f1b5fe8 100644
+--- a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
++++ b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm120.py
+@@ -118,14 +118,20 @@ class FlashInferMLASparseSM120Impl(MLAAttentionImpl[FlashInferMLASparseMetadata]
+         assert self.topk_indices_buffer is not None
+         topk_indices = self.topk_indices_buffer[:num_actual_toks]
+ 
+-        topk_indices_physical = cast(
+-            torch.Tensor,
++        # return_valid_counts gives the compacted per-token top-k length, which
++        # the native NoPE kernel requires (see below). The SM100 backend already
++        # asks for it; this one did not, which is why GLM-5.3 (qk_rope_head_dim
++        # =0) failed with "Native qk_rope_head_dim=0 TRTLLM-GEN MLA requires
++        # sparse_mla_top_k_lens".
++        topk_indices_physical, topk_valid_lens = cast(
++            tuple[torch.Tensor, torch.Tensor],
+             triton_convert_req_index_to_global_index(
+                 attn_metadata.req_id_per_token[:num_actual_toks],
+                 attn_metadata.block_table,
+                 topk_indices,
+                 BLOCK_SIZE=attn_metadata.block_size,
+                 NUM_TOPK_TOKENS=topk_indices.shape[1],
++                return_valid_counts=True,
+             ),
+         )
+ 
+@@ -141,6 +147,24 @@ class FlashInferMLASparseSM120Impl(MLAAttentionImpl[FlashInferMLASparseMetadata]
+             flashinfer_trtllm_batch_decode_with_kv_cache_mla,
+         )
+ 
++        # Page-table capacity is the actual buffer width, not the configured
++        # topk_tokens: kpool widens the buffer past index_topk and rounds up to
++        # a multiple of 128, so the two disagree whenever index_kpool > 1 (GLM
++        # -5.3 sets index_kpool=4). The SM100 backend already uses the width.
++        sparse_topk_capacity = topk_indices_physical.shape[1]
++
++        extra_kwargs: dict[str, torch.Tensor] = {}
++        empty_rows: torch.Tensor | None = None
++        if self.qk_rope_head_dim == 0:
++            # The native no-rope kernel takes the active top-k length per query
++            # token and rejects zero-length rows. Point empty rows at a valid
++            # dummy slot with length 1, then zero their output after the launch.
++            empty_rows = topk_valid_lens == 0
++            topk_indices_physical[:, 0] = topk_indices_physical[:, 0].masked_fill(
++                empty_rows, 0
++            )
++            extra_kwargs["sparse_mla_top_k_lens"] = topk_valid_lens.clamp(min=1)
++
+         out = flashinfer_trtllm_batch_decode_with_kv_cache_mla(
+             query=q.unsqueeze(1),
+             kv_cache=kv_c_and_k_pe_cache.view(torch.uint8).unsqueeze(1),
+@@ -150,11 +174,15 @@ class FlashInferMLASparseSM120Impl(MLAAttentionImpl[FlashInferMLASparseMetadata]
+             qk_rope_head_dim=self.qk_rope_head_dim,
+             block_tables=topk_indices_physical.unsqueeze(1),
+             seq_lens=None,
+-            max_seq_len=attn_metadata.topk_tokens,
++            max_seq_len=sparse_topk_capacity,
+             out=output.unsqueeze(1),
+             bmm1_scale=self.scale,
+             bmm2_scale=1.0,
+-            sparse_mla_top_k=attn_metadata.topk_tokens,
++            sparse_mla_top_k=sparse_topk_capacity,
+             kv_scale_format=self.kv_scale_format,
++            **extra_kwargs,
+         )
+-        return out.squeeze(1), None
++        result = out.squeeze(1)
++        if empty_rows is not None:
++            result.masked_fill_(empty_rows.view(-1, 1, 1), 0.0)
++        return result, None
+diff --git a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm90.py b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm90.py
+index 90dc4cd94..910a95057 100644
+--- a/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm90.py
++++ b/vllm/v1/attention/backends/mla/flashinfer_mla_sparse_sm90.py
+@@ -43,6 +43,19 @@ from vllm.model_executor.layers.attention.sparse_mla_attention import (
+     SparseMLACommonImpl,
+ )
+ from vllm.platforms.interface import DeviceCapability
++from vllm.platforms import current_platform
++
++
++def _mla_jit_backend() -> str:
++    """FlashInfer MLA JIT variant for this device.
++
++    FA3 is Hopper-only: on SM12x it compiles but emits no kernel image for the
++    device, so the first MLA call dies with "no kernel image is available for
++    execution on the device". FA2 is the portable path.
++    """
++    cap = current_platform.get_device_capability()
++    major = cap[0] if isinstance(cap, tuple) else getattr(cap, "major", 9)
++    return "fa2" if major >= 12 else "fa3"
+ from vllm.utils.flashinfer import has_flashinfer_sm90_nope_mla
+ from vllm.v1.attention.backend import (
+     AttentionBackend,
+@@ -104,7 +117,11 @@ class FlashInferMLASparseSM90Backend(AttentionBackend):
+ 
+     @classmethod
+     def supports_compute_capability(cls, capability: DeviceCapability) -> bool:
+-        return capability.major == 9
++        # Despite the SM90 name this is the rope-free (NoPE) MLA lane, and its
++        # FA2 path also runs on SM12x. Confirmed independently on SM121 (DGX
++        # Spark) before being tried here on SM120. The real capability gate is
++        # has_flashinfer_sm90_nope_mla() in supports_combination below.
++        return capability.major in (9, 12)
+ 
+     @classmethod
+     def supports_combination(
+@@ -199,7 +216,12 @@ class _SM90State:
+             kv_indices=self.kv_indices,
+             kv_len_arr=self.kv_len_arr,
+             use_cuda_graph=True,
+-            backend="fa3",
++            # FA3 is Hopper-only: on SM12x it JIT-compiles but emits no kernel
++            # image for the device, so the first MLA call dies with
++            # "no kernel image is available for execution on the device".
++            # FA2 is the portable path and is what this backend needs on
++            # SM12x. Same approach reported working on SM121 (DGX Spark).
++            backend=_mla_jit_backend(),
+         )
+         self._arange_cpu = torch.arange(self.max_tokens + 1, dtype=torch.int32)
+         self._qo_cpu = torch.empty(self.max_tokens + 1, dtype=torch.int32)
+diff --git a/vllm/v1/attention/backends/mla/prefill/flash_attn.py b/vllm/v1/attention/backends/mla/prefill/flash_attn.py
+index eace6f5a1..6bbee6784 100644
+--- a/vllm/v1/attention/backends/mla/prefill/flash_attn.py
++++ b/vllm/v1/attention/backends/mla/prefill/flash_attn.py
+@@ -327,6 +327,16 @@ class FlashAttnPrefillBackend(MLAPrefillBackend):
+                 qk_rope_head_dim=64,
+                 v_head_dim=128,
+             ),
++            # GLM-5.3 (NoPE MLA): same total qk head dim (256) and v head dim
++            # (256) as the 192+64 entry above, only with the RoPE share at
++            # zero. This impl uses qk_nope + qk_rope purely as a total and
++            # never splits on the rope part, so the shape is identical from
++            # FlashAttention's point of view.
++            MLADimensions(
++                qk_nope_head_dim=256,
++                qk_rope_head_dim=0,
++                v_head_dim=256,
++            ),
+         ]
+ 
+     def __init__(

@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400" role="img" aria-label="Hot-expert cache hit rate versus slots per layer: 33 slots 42.65 percent, 66 slots 61.46, 99 slots 73.98, 132 slots 82.99, 165 slots 89.62">
+  <title>Hot-expert cache hit rate vs slots per layer</title>
+  <rect x="0" y="0" width="880" height="400" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="36" font-size="20" font-weight="600" fill="#eceff4">23% of the capacity buys 61% of the fetches</text>
+    <text x="28" y="58" font-size="12.5" fill="#9aa4b2">Hit rate vs slots per layer, from the shipped frequency profile: 33 offloaded layers &#215; 288 experts, ~12,000 staged steps</text>
+
+    <g stroke="#3d444d" stroke-width="1">
+      <line x1="80" y1="330" x2="850" y2="330"/>
+      <g stroke-dasharray="3 4">
+        <line x1="80" y1="278" x2="850" y2="278"/>
+        <line x1="80" y1="226" x2="850" y2="226"/>
+        <line x1="80" y1="174" x2="850" y2="174"/>
+        <line x1="80" y1="122" x2="850" y2="122"/>
+        <line x1="80" y1="70" x2="850" y2="70"/>
+      </g>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="end">
+      <text x="70" y="334">0%</text>
+      <text x="70" y="282">20%</text>
+      <text x="70" y="230">40%</text>
+      <text x="70" y="178">60%</text>
+      <text x="70" y="126">80%</text>
+      <text x="70" y="74">100%</text>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="middle">
+      <text x="80" y="350">0</text>
+      <text x="270" y="350">72</text>
+      <text x="460" y="350">144</text>
+      <text x="650" y="350">216</text>
+      <text x="840" y="350">288</text>
+      <text x="465" y="370" font-size="12" fill="#9aa4b2">experts pinned in VRAM, per layer (of 288)</text>
+    </g>
+
+    <rect x="222" y="70" width="32" height="260" fill="#6aa9ff" opacity="0.13"/>
+    <text x="238" y="64" font-size="10.5" fill="#8fbcff" text-anchor="middle">shipped 54&#8211;66</text>
+
+    <line x1="80" y1="330" x2="840" y2="70" stroke="#8b949e" stroke-width="1.5" stroke-dasharray="6 5"/>
+    <text x="676" y="152" font-size="11.5" fill="#adb6c2" transform="rotate(-18.9 676 152)">what a uniform router would give</text>
+
+    <polyline points="80,330 167,219 254,170 341,138 428,114 515,97 840,70" fill="none" stroke="#5fd08a" stroke-width="2.5"/>
+    <g fill="#5fd08a">
+      <circle cx="167" cy="219" r="5"/>
+      <circle cx="254" cy="170" r="5"/>
+      <circle cx="341" cy="138" r="5"/>
+      <circle cx="428" cy="114" r="5"/>
+      <circle cx="515" cy="97" r="5"/>
+    </g>
+    <g font-size="12" font-weight="600" fill="#d7f5e4" text-anchor="middle">
+      <text x="167" y="207">42.65%</text>
+      <text x="254" y="158">61.46%</text>
+      <text x="341" y="126">73.98%</text>
+      <text x="428" y="102">82.99%</text>
+      <text x="515" y="85">89.62%</text>
+    </g>
+    <g font-size="10.5" fill="#8b949e" text-anchor="middle">
+      <text x="167" y="236">33</text>
+      <text x="254" y="187">66</text>
+      <text x="341" y="155">99</text>
+      <text x="428" y="131">132</text>
+      <text x="515" y="114">165</text>
+    </g>
+  </g>
+</svg>

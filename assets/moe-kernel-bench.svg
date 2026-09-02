@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 350" width="880" height="350" role="img" aria-label="NVFP4 MoE kernel microbenchmark at M=1: marlin 77.4us, flashinfer_cutlass 99.8us, vllm cutlass 110.0us, b12x 409.4us">
+  <title>NVFP4 MoE kernels on SM120 &#8212; Marlin wins</title>
+  <rect x="0" y="0" width="880" height="350" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="36" font-size="20" font-weight="600" fill="#eceff4">Every &#8220;native FP4&#8221; kernel lost to Marlin</text>
+    <text x="28" y="58" font-size="12.5" fill="#9aa4b2">GLM-5.3 dims (hidden 4096, moe_inter 2048, top-8, 32 experts, weights resident in VRAM), M=1, median of &#8805;50 iters after warmup &#183; lower is better</text>
+
+    <g stroke="#3d444d" stroke-width="1" stroke-dasharray="3 4">
+      <line x1="262" y1="80" x2="262" y2="264"/>
+      <line x1="374" y1="80" x2="374" y2="264"/>
+      <line x1="487" y1="80" x2="487" y2="264"/>
+      <line x1="599" y1="80" x2="599" y2="264"/>
+      <line x1="711" y1="80" x2="711" y2="264"/>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="middle">
+      <text x="262" y="282">0</text>
+      <text x="374" y="282">100</text>
+      <text x="487" y="282">200</text>
+      <text x="599" y="282">300</text>
+      <text x="711" y="282">400 &#181;s</text>
+    </g>
+
+    <g font-size="13" fill="#dbe2ea" text-anchor="end">
+      <text x="250" y="103">marlin</text>
+      <text x="250" y="148">flashinfer_cutlass</text>
+      <text x="250" y="193">cutlass (vLLM)</text>
+      <text x="250" y="238">b12x</text>
+    </g>
+
+    <rect x="262" y="86"  width="87"  height="26" rx="3" fill="#5fd08a"/>
+    <rect x="262" y="131" width="112" height="26" rx="3" fill="#ffb454"/>
+    <rect x="262" y="176" width="124" height="26" rx="3" fill="#ffb454" opacity="0.8"/>
+    <rect x="262" y="221" width="460" height="26" rx="3" fill="#ff7b72"/>
+
+    <g font-size="13" fill="#eceff4">
+      <text x="359" y="103"><tspan font-weight="600">77.4 &#181;s</tspan> &#8212; fastest</text>
+      <text x="384" y="148">99.8 &#181;s &#8212; 0.78x</text>
+      <text x="396" y="193">110.0 &#181;s &#8212; 0.70x</text>
+      <text x="732" y="238">409.4 &#181;s &#8212; <tspan font-weight="600" fill="#ff9a94">0.19x</tspan></text>
+    </g>
+
+    <text x="28" y="312" font-size="12" fill="#9aa4b2">Marlin also wins at M = 2, 4 and 64. Its unconditional &#8220;your GPU does not have native support for FP4&#8221; warning predicts nothing:</text>
+    <text x="28" y="330" font-size="12" fill="#9aa4b2">end to end, moe_backend=b12x served this model at 1.2&#8211;1.3 tok/s. Both CUTLASS-family kernels are also silently WRONG on SM120.</text>
+  </g>
+</svg>

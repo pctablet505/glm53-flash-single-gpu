@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 390" width="880" height="390" role="img" aria-label="Decode step time budget: staging gather 34.06 ms, dense BF16 GEMM 18.98 ms, MoE experts 3.58 ms, norm/activation 1.38 ms, attention 0.47 ms">
+  <title>Where one GLM-5.3-Flash decode step goes</title>
+  <rect x="0" y="0" width="880" height="390" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="38" font-size="20" font-weight="600" fill="#eceff4">Where one decode step actually goes</text>
+    <text x="28" y="60" font-size="12.5" fill="#9aa4b2">torch profiler, median of 12 decode steps &#183; offload 125 GiB, 66 hot slots, CUDA graphs on &#183; 2026-09-02</text>
+
+    <g stroke="#3d444d" stroke-width="1" stroke-dasharray="3 4">
+      <line x1="262" y1="84" x2="262" y2="316"/>
+      <line x1="420" y1="84" x2="420" y2="316"/>
+      <line x1="579" y1="84" x2="579" y2="316"/>
+      <line x1="737" y1="84" x2="737" y2="316"/>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="middle">
+      <text x="262" y="334">0</text>
+      <text x="420" y="334">10</text>
+      <text x="579" y="334">20</text>
+      <text x="737" y="334">30 ms</text>
+    </g>
+
+    <g font-size="13" fill="#dbe2ea" text-anchor="end">
+      <text x="250" y="117">staging gather (PCIe)</text>
+      <text x="250" y="165">dense BF16 GEMM</text>
+      <text x="250" y="213">MoE experts (Marlin)</text>
+      <text x="250" y="261">norm / activation / other</text>
+      <text x="250" y="309">attention</text>
+    </g>
+
+    <rect x="262" y="98"  width="540" height="26" rx="3" fill="#6aa9ff"/>
+    <rect x="262" y="146" width="301" height="26" rx="3" fill="#ffb454"/>
+    <rect x="262" y="194" width="57"  height="26" rx="3" fill="#5fd08a"/>
+    <rect x="262" y="242" width="22"  height="26" rx="3" fill="#c39cff"/>
+    <rect x="262" y="290" width="8"   height="26" rx="3" fill="#ff7b72"/>
+
+    <text x="790" y="117" font-size="13" font-weight="600" fill="#10151c" text-anchor="end">34.06 ms &#183; 58%</text>
+    <g font-size="13" fill="#eceff4">
+      <text x="575" y="165">18.98 ms &#183; 32%</text>
+      <text x="331" y="213">3.58 ms &#183; 6.1%</text>
+      <text x="296" y="261">1.38 ms &#183; 2.4%</text>
+      <text x="282" y="309" fill="#ff9a94">0.47 ms &#183; 0.8%</text>
+    </g>
+
+    <text x="28" y="366" font-size="12" fill="#9aa4b2">Total GPU-busy per step &#8776; 58.5 ms. Attention is 0.8% of it &#8212; on a model configured for a 327,680-token context.</text>
+  </g>
+</svg>

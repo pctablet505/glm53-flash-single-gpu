@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" role="img" aria-label="Host to GPU transfer bandwidth: index_select 23.1 GB/s, per-row copy 41.4 GB/s, Triton gather 52.1 GB/s, against a 56.4 GB/s PCIe H2D ceiling and 64.6 GB/s host DRAM">
+  <title>UVA memory is not slow &#8212; the gather kernel is</title>
+  <rect x="0" y="0" width="900" height="360" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="36" font-size="20" font-weight="600" fill="#eceff4">UVA memory is not slow. The gather kernel was.</text>
+    <text x="28" y="58" font-size="12.5" fill="#9aa4b2">Fetching the same 8 &#215; 4 MiB rows out of the same host-mapped tensor, three ways &#183; measured on this box</text>
+
+    <g stroke="#3d444d" stroke-width="1" stroke-dasharray="3 4">
+      <line x1="300" y1="82" x2="300" y2="262"/>
+      <line x1="409" y1="82" x2="409" y2="262"/>
+      <line x1="517" y1="82" x2="517" y2="262"/>
+      <line x1="626" y1="82" x2="626" y2="262"/>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="middle">
+      <text x="300" y="280">0</text>
+      <text x="409" y="280">20</text>
+      <text x="517" y="280">40</text>
+      <text x="626" y="280">60 GB/s</text>
+    </g>
+
+    <line x1="607" y1="82" x2="607" y2="262" stroke="#adb6c2" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="615" y="96" font-size="11.5" fill="#adb6c2">PCIe 5.0 x16 H2D</text>
+    <text x="615" y="111" font-size="11.5" fill="#adb6c2">56.4 GB/s measured</text>
+    <line x1="652" y1="82" x2="652" y2="262" stroke="#ffb454" stroke-width="1.5" stroke-dasharray="6 4"/>
+    <text x="660" y="139" font-size="11.5" fill="#ffc87a">host DDR5 STREAM read</text>
+    <text x="660" y="154" font-size="11.5" fill="#ffc87a">64.6 GB/s, dual-channel</text>
+
+    <g text-anchor="end">
+      <text x="288" y="163" font-size="13" fill="#dbe2ea">torch.index_select over the UVA view</text>
+      <text x="288" y="179" font-size="11" fill="#8b949e">narrow SM loads across the PCIe BAR</text>
+      <text x="288" y="203" font-size="13" fill="#dbe2ea">per-row copy_ &#8594; cudaMemcpyAsync</text>
+      <text x="288" y="219" font-size="11" fill="#8b949e">copy engine, but needs a host sync</text>
+      <text x="288" y="243" font-size="13" fill="#dbe2ea">our Triton gather, device-side indices</text>
+      <text x="288" y="259" font-size="11" fill="#8b949e">no sync &#8594; CUDA-graph capturable</text>
+    </g>
+
+    <rect x="300" y="150" width="125" height="26" rx="3" fill="#ff7b72"/>
+    <rect x="300" y="190" width="225" height="26" rx="3" fill="#ffb454"/>
+    <rect x="300" y="230" width="283" height="26" rx="3" fill="#5fd08a"/>
+
+    <g font-size="13" font-weight="600" fill="#10151c" text-anchor="end">
+      <text x="415" y="169">23.1 GB/s</text>
+      <text x="515" y="209">41.4 GB/s</text>
+      <text x="573" y="249">52.1 GB/s &#183; 92% of ingress</text>
+    </g>
+
+    <text x="28" y="316" font-size="12" fill="#9aa4b2">The memory is identical in all three rows; only the access pattern differs &#8212; and the middle row is a trap of its own: it needs the</text>
+    <text x="28" y="334" font-size="12" fill="#9aa4b2">expert ids on the host, and that .tolist&#40;&#41; sync forces the whole engine into eager mode, which costs 13%. VRAM, for scale, is</text>
+    <text x="28" y="352" font-size="12" fill="#9aa4b2">~1,800 GB/s &#8212; 30x off the right edge of this chart. That gap is the whole reason a hot-expert cache pays.</text>
+  </g>
+</svg>

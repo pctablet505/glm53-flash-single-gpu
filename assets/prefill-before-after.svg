@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 392" width="940" height="392" role="img" aria-label="Prefill throughput before and after grouped DMA staging: 614 tokens per second before, 1487 to 1771 after">
+  <title>Prefill: 614 to ~1750 tok/s</title>
+  <rect x="0" y="0" width="940" height="392" rx="10" fill="#262b33" stroke="#3d444d" stroke-width="1"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="28" y="36" font-size="20" font-weight="600" fill="#eceff4">Prefill: the phase the decode benchmarks hid</text>
+    <text x="28" y="58" font-size="12.5" fill="#9aa4b2">tokens/s of prompt processing, streamed &#183; TTFT = time to the first content chunk</text>
+
+    <g stroke="#3d444d" stroke-width="1" stroke-dasharray="3 4">
+      <line x1="262" y1="80" x2="262" y2="308"/>
+      <line x1="380" y1="80" x2="380" y2="308"/>
+      <line x1="499" y1="80" x2="499" y2="308"/>
+      <line x1="617" y1="80" x2="617" y2="308"/>
+    </g>
+    <g font-size="11" fill="#8b949e" text-anchor="middle">
+      <text x="262" y="326">0</text>
+      <text x="380" y="326">500</text>
+      <text x="499" y="326">1000</text>
+      <text x="617" y="326">1500 tok/s</text>
+    </g>
+
+    <g font-size="12.5" fill="#dbe2ea" text-anchor="end">
+      <text x="250" y="99">10.3k prompt &#8212; <tspan fill="#ff9a94">before grouping</tspan></text>
+      <text x="250" y="144">10.3k fresh #1</text>
+      <text x="250" y="189">10.3k fresh #2</text>
+      <text x="250" y="234">35.6k fresh</text>
+      <text x="250" y="279">304.8k &#8212; context validation</text>
+    </g>
+
+    <rect x="262" y="82"  width="146" height="26" rx="3" fill="#ff7b72"/>
+    <rect x="262" y="127" width="420" height="26" rx="3" fill="#5fd08a"/>
+    <rect x="262" y="172" width="410" height="26" rx="3" fill="#5fd08a"/>
+    <rect x="262" y="217" width="374" height="26" rx="3" fill="#5fd08a" opacity="0.82"/>
+    <rect x="262" y="262" width="353" height="26" rx="3" fill="#6aa9ff"/>
+
+    <g font-size="12.5" fill="#eceff4">
+      <text x="420" y="99"><tspan font-weight="600">614 tok/s</tspan> &#183; TTFT 16.8 s</text>
+      <text x="694" y="144"><tspan font-weight="600">1771 tok/s</tspan> &#183; TTFT 5.82 s</text>
+      <text x="684" y="189"><tspan font-weight="600">1729 tok/s</tspan> &#183; TTFT 5.96 s</text>
+      <text x="648" y="234"><tspan font-weight="600">1576 tok/s</tspan> &#183; TTFT 22.57 s</text>
+      <text x="627" y="279"><tspan font-weight="600">1487 tok/s</tspan> &#183; TTFT 205 s</text>
+    </g>
+
+    <text x="28" y="346" font-size="12" fill="#9aa4b2">Salted prompts never sent to that server before, so nothing could come from the prefix cache.</text>
+    <text x="28" y="364" font-size="12" fill="#9aa4b2">The four fast rows are logged in artifacts/prefill-fresh-2026-09-02.txt; the 304.8k row is the context-ceiling validation run.</text>
+  </g>
+</svg>
