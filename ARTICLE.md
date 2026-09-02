@@ -3,6 +3,21 @@
 **320B total / 18B active, NVFP4, single card, no quality loss — and a list of the
 things that didn't work, which is the more useful half.**
 
+<p align="center">
+  <img src="assets/primary-graphic.svg" alt="GLM-5.3-Flash on a Single RTX PRO 6000: 16.5 tok/s decode, 1,771 tok/s prefill, 304.8k context" width="100%">
+</p>
+
+> [!NOTE]
+> ### Notes at a glance
+>
+> - **We did not train or quantize this model.** GLM-5.3-Flash was created by Zhipu AI, and this NVFP4 checkpoint is from [dealignai](https://huggingface.co/dealignai/GLM-5.3-Flash-ABLITERATED-NVFP4).
+> - **The core point:** Running a 181 GiB model on a 96 GiB GPU with slow offload isn't novel. The real point of this work is getting GLM-5.3-Flash to run **efficiently on a single RTX PRO 6000** — reaching **16.50 tok/s** decode, **~1750 tok/s** prefill, and a **304,800-token validated context** on a consumer AM5 desktop with ordinary dual-channel DDR5.
+> - **Platform:** 1× RTX PRO 6000 Blackwell (96 GiB VRAM) + AMD Ryzen 9 9950X3D (AM5 desktop, 64.6 GB/s host STREAM read) + PCIe 5.0 x16.
+> - **The three changes that actually mattered:**
+>   1. Replaced PyTorch's slow SM gather with a Triton gather kernel achieving 52.1 GB/s (92% of measured PCIe H2D) with device-resident indices.
+>   2. Frequency-ranked hot-expert VRAM cache (61.5% hit rate @ 66 slots) funded by offloading *more* weights to host to free VRAM.
+>   3. Grouped prefill staging in 64-expert chunks to bypass the un-staged PCIe BAR fallback, cutting 10k TTFT from 16.8 s to 5.82 s.
+
 GLM-5.3-Flash in NVFP4 is a 181.29 GiB checkpoint. The card is a single RTX PRO
 6000 Blackwell Workstation with 96 GiB of VRAM — 94.97 GiB of it visible to
 torch. The model is roughly twice the size of the memory it has to run in, so
@@ -40,6 +55,11 @@ genuinely want to see it.
 | quality | unmodified. The fast prefill path is numerically indistinguishable from the baseline's *own* run-to-run variability, measured per-token over 13,519 prompt logprobs |
 | stability | 40 varied requests (T=0/0.7/1.0, four 9k prefills) plus a 35,553-token prompt: **0 failures, 0 Xid, 592 s** |
 | engine | vLLM PR #53906 (`0.29.0.dev0+glm53`) + local patches, FlashInfer 0.6.18 |
+
+<p align="center">
+  <img src="assets/throughput-progression.svg" alt="Decode throughput progression from 8.7 to 16.50 tokens per second, with a rejected 20.48 router-pruning result" width="100%">
+</p>
+*Figure 1: Measured decode throughput progression across optimization stages, single-stream. The rejected 20.48 tok/s configuration pruned top-8 to top-6 routing and was struck down due to hallucination loops.*
 
 **The machine.** Ubuntu 26.04 · AMD Ryzen 9 9950X3D (16c/32t) on an X870E AORUS
 ELITE X3D · 182 GiB DDR5, **dual-channel** · 1× RTX PRO 6000 Blackwell (SM120)
@@ -461,6 +481,95 @@ thread. **Verify the server before blaming the client.**
 
 ---
 
+## Eight bugs and traps we hit along the way
+
+Getting this model running on consumer-class hardware was mostly a sequence of
+subtle, silent failures. These are the eight hardest bugs and traps we hit,
+recorded here so others don't have to spend days debugging them:
+
+### 1. The Silent Garbage MoE Kernel (Blackwell / SM120)
+On SM120, `flashinfer_cutlass` and vLLM's internal `cutlass` NVFP4 MoE kernels
+accept the work, initialize without warning, report healthy `/health` status,
+and **silently return constant garbage** — emitting token 1023 (`"lock"`) forever.
+Marlin (`moe_backend="marlin"`) is the only NVFP4 MoE backend verified to produce
+mathematically and numerically correct outputs on Blackwell.
+
+### 2. Power-of-Two Allocator Bloat & Repack Duplication (160 GiB Host Freeze)
+PyTorch's caching host allocator rounds allocations up to powers of two (a 2.42 GiB
+weight tensor claims 4 GiB). Worse: holding a Python reference to `_vllm_cpu_source`
+prevents releasing un-repacked weights when Marlin repacks scales at startup,
+causing both copies to coexist. Host RSS skyrocketed from 20 GiB to 160 GiB,
+freezing the machine with an OOM-kill.
+*The fix:* Hand unpinned tensors to `get_cuda_view_from_cpu_tensor`
+(`VLLM_WEIGHT_OFFLOADING_DISABLE_PIN_MEMORY=1`), pin via `malloc` + `cudaHostRegister`,
+and drop all Python handles prior to scale repacking.
+
+### 3. Leaked GPU Reservations in UVA Offloading
+When `UVAOffloader` moves parameters to host RAM, PyTorch's CUDA caching allocator
+holds the freed blocks and extends segments for subsequent layers rather than
+reusing them. GPU reserved memory climbed by **4.06 GiB per layer** (175 GiB on a
+96 GiB GPU!).
+*The fix:* Issue an explicit `torch.cuda.empty_cache()` call after offloading each layer.
+
+### 4. The Cross-Layer Aggregation Illusion
+A naive routing histogram constructed by summing activation counts across all 42
+layers yielded a flat distribution (top 35% captured only 43.2% of fetches),
+leading to the false conclusion that expert caching was futile (<1.15x).
+*The reality:* Different layers route to completely different expert subsets.
+Measured *per layer*, the top 36% of experts serve **74.3% of that layer's activations**.
+
+### 5. Breakable CUDA Graph MMU Faults (Xid 31)
+Intermittent `illegal memory access` faults hit serving between request 2 and 24.
+vLLM auto-enables breakable CUDA graphs, which can overlap kernels across streams
+while sharing staging buffers.
+*The fix:* Set `VLLM_USE_BREAKABLE_CUDAGRAPH=0` and enforce strict on-device bounds
+checking (`if (e < 0) | (e >= n_experts) return`) in the Triton gather kernels and
+scatter operations.
+
+### 6. The "Bit-Identical" Equivalence Fallacy
+Grouped prefill was initially called "bit-identical" because two T=0 test prompts
+matched baseline output token-for-token. In reality, the baseline stack itself
+is nondeterministic across runs due to Mamba prefix-cache state reuse rounding.
+Calibrating candidate drift against the baseline's own prompt logprob variance
+is the only statistically sound equivalence test.
+
+### 7. The Short-Prompt TTFT Penalty
+Unconditionally grouping prefill across all 288 experts forced a 14-token prompt
+to stage all experts in 5 chunks, ballooning TTFT from 0.85 s to 2.05 s.
+*The fix:* A static, CUDA-graph-safe gate (`topk_ids.shape[0] >= 48`) that directs
+short prompts back to the low-overhead zero-copy path.
+
+### 8. Context Limit is Free VRAM, Not `--max-model-len`
+Setting `--max-model-len 327680` crashed on a 180k prompt with 60 hot slots
+because dynamic activations for long contexts (MLA KV cache and sparse indexer)
+are allocated per-request. Dropping to 54 hot slots freed 6.2 GiB VRAM, allowing a
+**304,800-token prompt** to prefill cleanly with zero noticeable decode penalty.
+
+---
+
+## Serving GLM-5.3-Flash as an Agent Backend (Cursor, Claude Code, Aider)
+
+When this deployment was hooked up to agentic coding tools, two practical
+phenomena emerged that mattered more than raw tok/s:
+
+### 1. The "Agent Amnesia" Loop
+In multi-turn tool-calling sessions, the agent occasionally appeared to "forget
+its context" and loop, re-issuing its very first tool call. Tracing the HTTP logs
+revealed that all 3 instances coincided with silent vLLM engine crashes mid-turn.
+A crashed turn leaves an empty assistant turn in the database, which the Jinja
+chat template renders as a brand-new conversation thread. **Always verify engine
+exit codes before suspecting agent logic or client-side prompt truncation.**
+
+### 2. The `reasoning_effort` Silent Max Trap
+GLM-5.3-Flash's chat template only recognizes three explicit effort levels:
+`low`, `high`, and `max`. Many agent frameworks pass `medium` by default.
+In this template, anything other than `low` or `high` **silently defaults to `max`**.
+This forces the model to emit 300–600 tokens of internal chain-of-thought on
+every single trivial tool turn, inflating turn latency by 20–40 seconds.
+Explicitly set `reasoning_effort: "low"` for interactive coding workflows.
+
+---
+
 ## Long context: the ceiling is free VRAM, not `--max-model-len`
 
 Raising `--max-model-len` from 262,144 to 327,680 is not enough on its own.
@@ -581,3 +690,28 @@ If you have a faster published number for GLM-5.3-Flash on a single RTX PRO 6000
 — or you find an error in any of the above — we want to hear about it. Every
 figure here is reproducible from the repository, and the ones that are not
 reproducible are marked as such.
+
+---
+
+## Measured reference summary
+
+A condensed reference of the hardware, measured throughputs, and what was found:
+
+```
+MODEL:        GLM-5.3-Flash (320B total / 18B active, NVFP4, 181.29 GiB checkpoint)
+HARDWARE:     1x RTX PRO 6000 Blackwell (96 GiB VRAM) + AMD Ryzen 9 9950X3D + 182 GiB DDR5 (Dual-Channel)
+DECODE:       16.50 tok/s sustained (66 hot slots) | 14.99 tok/s on 54-slot context build
+PREFILL:      1,771 tok/s on ~10.3k fresh prompt (TTFT 5.82s vs 16.8s baseline)
+CONTEXT:      304,800 tokens prefilled end-to-end (TTFT 205s) on 327,680-token window
+QUALITY:      Per-token logprob drift is inside baseline run-to-run variation
+LINK SPEED:   52.1 GB/s achieved via custom Triton gather (92% of measured PCIe H2D)
+VRAM CACHE:   61.5% hit rate @ 66 hot slots/layer (frequency-ordered per layer)
+STABILITY:    0 crashes, 0 Xid across 40-request soak tests (breakable CUDA graphs disabled)
+```
+
+### Summary of findings
+- **UVA Zero-Copy is fast; SM Gather is slow.** PyTorch's `index_select` issues narrow loads across the PCIe BAR (~10.8–23 GB/s). A custom Triton gather with device-side static indices hits 52.1 GB/s (92% link capacity) without breaking CUDA graph capture.
+- **Offloading more can make it faster if you cache.** Moving from 105 GiB to 125 GiB offloaded freed VRAM to host a 66-slot per-layer hot-expert cache, converting 61.5% of PCIe fetches into ~1.8 TB/s VRAM hits.
+- **Group your prefill.** Prefill routes to all 288 experts, causing naive offloading to fall back to un-staged UVA reads. Grouping into 64-expert chunks and writing to disjoint rows delivers 2.9x prefill speedup with bit-clean fp32 reductions.
+- **Beware the "Native" trap on Blackwell.** Native CUTLASS MoE kernels return silent garbage (token 1023 forever). Marlin is currently the only correct NVFP4 MoE engine on SM120.
+

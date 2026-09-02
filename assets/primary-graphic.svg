@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" width="1200" height="630" role="img" aria-label="A 181 GiB Model on a 96 GiB GPU: GLM-5.3-Flash at 16.5 tok/s on one RTX PRO 6000">
+  <defs>
+    <!-- Background Gradients -->
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090d13"/>
+      <stop offset="50%" stop-color="#0f1622"/>
+      <stop offset="100%" stop-color="#0a0e17"/>
+    </linearGradient>
+    <linearGradient id="card-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#161f2e" stop-opacity="0.95"/>
+      <stop offset="100%" stop-color="#0f1624" stop-opacity="0.95"/>
+    </linearGradient>
+    <linearGradient id="accent-green" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="accent-blue" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="accent-purple" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+    <linearGradient id="accent-amber" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <!-- Filter for subtle drop shadows -->
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Base Background -->
+  <rect width="1200" height="630" fill="url(#bg-grad)"/>
+
+  <!-- Subtle Grid Accent -->
+  <g stroke="#1e293b" stroke-width="0.5" opacity="0.3">
+    <line x1="0" y1="70" x2="1200" y2="70"/>
+    <line x1="0" y1="180" x2="1200" y2="180"/>
+    <line x1="0" y1="350" x2="1200" y2="350"/>
+    <line x1="0" y1="560" x2="1200" y2="560"/>
+    <line x1="100" y1="0" x2="100" y2="630"/>
+    <line x1="390" y1="0" x2="390" y2="630"/>
+    <line x1="770" y1="0" x2="770" y2="630"/>
+    <line x1="1100" y1="0" x2="1100" y2="630"/>
+  </g>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <!-- Top Pill Badge -->
+    <g transform="translate(48, 28)">
+      <rect width="450" height="26" rx="13" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <circle cx="14" cy="13" r="5" fill="#10b981"/>
+      <text x="28" y="17" font-size="11" font-weight="600" fill="#94a3b8" letter-spacing="0.8">GLM-5.3-FLASH · SINGLE RTX PRO 6000 · AM5 DESKTOP</text>
+    </g>
+
+    <g transform="translate(1000, 28)">
+      <rect width="152" height="26" rx="13" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+      <text x="76" y="17" font-size="11" font-weight="600" fill="#38bdf8" text-anchor="middle">vLLM + MARLIN</text>
+    </g>
+
+    <!-- Main Title -->
+    <text x="48" y="90" font-size="34" font-weight="800" fill="#f8fafc" letter-spacing="-0.5">GLM-5.3-Flash on a Single RTX PRO 6000</text>
+    <text x="48" y="122" font-size="17" font-weight="500" fill="#94a3b8">
+      Making a 320B/18B MoE fast on one workstation card: <tspan fill="#e2e8f0" font-weight="600">16.5 tok/s decode · 1,771 tok/s prefill · 304k context</tspan>
+    </text>
+
+    <!-- 4 Key Metric Cards -->
+    <!-- Card 1: Decode Throughput -->
+    <g transform="translate(48, 146)" filter="url(#shadow)">
+      <rect width="260" height="106" rx="10" fill="url(#card-grad)" stroke="#334155" stroke-width="1"/>
+      <rect x="0" y="0" width="260" height="4" rx="2" fill="url(#accent-green)"/>
+      <text x="18" y="28" font-size="11" font-weight="700" fill="#10b981" letter-spacing="0.5">SUSTAINED DECODE</text>
+      <text x="18" y="68" font-size="36" font-weight="800" fill="#f8fafc">16.50 <tspan font-size="18" font-weight="500" fill="#94a3b8">tok/s</tspan></text>
+      <text x="18" y="90" font-size="11" fill="#cbd5e1">from 8.7 baseline (66 hot slots)</text>
+    </g>
+
+    <!-- Card 2: Prefill Throughput -->
+    <g transform="translate(328, 146)" filter="url(#shadow)">
+      <rect width="260" height="106" rx="10" fill="url(#card-grad)" stroke="#334155" stroke-width="1"/>
+      <rect x="0" y="0" width="260" height="4" rx="2" fill="url(#accent-blue)"/>
+      <text x="18" y="28" font-size="11" font-weight="700" fill="#38bdf8" letter-spacing="0.5">PREFILL RATE</text>
+      <text x="18" y="68" font-size="36" font-weight="800" fill="#f8fafc">1,771 <tspan font-size="18" font-weight="500" fill="#94a3b8">tok/s</tspan></text>
+      <text x="18" y="90" font-size="11" fill="#cbd5e1">10k TTFT 5.82 s (was 16.8 s)</text>
+    </g>
+
+    <!-- Card 3: Validated Context -->
+    <g transform="translate(608, 146)" filter="url(#shadow)">
+      <rect width="260" height="106" rx="10" fill="url(#card-grad)" stroke="#334155" stroke-width="1"/>
+      <rect x="0" y="0" width="260" height="4" rx="2" fill="url(#accent-purple)"/>
+      <text x="18" y="28" font-size="11" font-weight="700" fill="#c084fc" letter-spacing="0.5">VALIDATED CONTEXT</text>
+      <text x="18" y="68" font-size="36" font-weight="800" fill="#f8fafc">304.8k <tspan font-size="18" font-weight="500" fill="#94a3b8">tokens</tspan></text>
+      <text x="18" y="90" font-size="11" fill="#cbd5e1">prefilled on 327k configured len</text>
+    </g>
+
+    <!-- Card 4: PCIe DMA Bandwidth -->
+    <g transform="translate(888, 146)" filter="url(#shadow)">
+      <rect width="264" height="106" rx="10" fill="url(#card-grad)" stroke="#334155" stroke-width="1"/>
+      <rect x="0" y="0" width="264" height="4" rx="2" fill="url(#accent-amber)"/>
+      <text x="18" y="28" font-size="11" font-weight="700" fill="#fbbf24" letter-spacing="0.5">TRITON GATHER KERNEL</text>
+      <text x="18" y="68" font-size="36" font-weight="800" fill="#f8fafc">52.1 <tspan font-size="18" font-weight="500" fill="#94a3b8">GB/s</tspan></text>
+      <text x="18" y="90" font-size="11" fill="#cbd5e1">92% of measured PCIe H2D</text>
+    </g>
+
+    <!-- System Architecture Visual Section -->
+    <g transform="translate(48, 274)" filter="url(#shadow)">
+      <!-- Large Container -->
+      <rect width="1104" height="276" rx="12" fill="#0d1420" stroke="#1e293b" stroke-width="1.5"/>
+      
+      <!-- Section Header -->
+      <text x="24" y="32" font-size="14" font-weight="700" fill="#94a3b8" letter-spacing="0.6">DATA PATH: HOST OFFLOADING VIA TRITON DMA GATHER &amp; VRAM HOT-EXPERT CACHING</text>
+
+      <!-- Subgraph 1: Host System (Desktop AM5) -->
+      <g transform="translate(24, 52)">
+        <rect width="300" height="200" rx="8" fill="#131b2a" stroke="#253346" stroke-width="1"/>
+        <text x="16" y="26" font-size="13" font-weight="700" fill="#93c5fd">HOST RAM (182 GiB DDR5)</text>
+        <text x="16" y="44" font-size="10.5" fill="#64748b">Dual-channel AM5 · 64.6 GB/s STREAM read</text>
+
+        <!-- Block 1: Offloaded Experts -->
+        <rect x="14" y="58" width="272" height="74" rx="6" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+        <text x="26" y="80" font-size="12" font-weight="600" fill="#e2e8f0">125 GiB Routed NVFP4 Experts</text>
+        <text x="26" y="98" font-size="10.5" fill="#94a3b8">Exact-size pinned via cudaHostRegister</text>
+        <text x="26" y="116" font-size="10.5" fill="#38bdf8">UVA zero-copy mapped address space</text>
+
+        <!-- Block 2: CPU Co-Execution note -->
+        <rect x="14" y="142" width="272" height="44" rx="6" fill="#151d28" stroke="#2a384c" stroke-width="1"/>
+        <text x="24" y="160" font-size="10.5" font-weight="600" fill="#94a3b8">No CPU Expert GEMM</text>
+        <text x="24" y="176" font-size="9.5" fill="#64748b">Host RAM is only 1.15x PCIe bandwidth</text>
+      </g>
+
+      <!-- Connector 1: PCIe 5.0 x16 Ingress -->
+      <g transform="translate(336, 115)">
+        <line x1="0" y1="35" x2="68" y2="35" stroke="#38bdf8" stroke-width="3" stroke-dasharray="6 3"/>
+        <polygon points="72,35 64,30 64,40" fill="#38bdf8"/>
+        <text x="36" y="15" font-size="10.5" font-weight="700" fill="#38bdf8" text-anchor="middle">PCIe 5.0 x16</text>
+        <text x="36" y="28" font-size="9.5" font-weight="600" fill="#10b981" text-anchor="middle">52.1 GB/s</text>
+        <text x="36" y="55" font-size="9" fill="#64748b" text-anchor="middle">(92% of link)</text>
+      </g>
+
+      <!-- Subgraph 2: Custom Triton DMA Gather Kernel -->
+      <g transform="translate(416, 52)">
+        <rect width="250" height="200" rx="8" fill="#111c2e" stroke="#1d4ed8" stroke-width="1.5"/>
+        <text x="16" y="26" font-size="13" font-weight="700" fill="#60a5fa">TRITON GATHER KERNEL</text>
+        <text x="16" y="44" font-size="10.5" fill="#64748b">Runs on-device · CUDA-graph-safe</text>
+
+        <rect x="14" y="58" width="222" height="48" rx="6" fill="#1e293b"/>
+        <text x="24" y="78" font-size="11" font-weight="600" fill="#e2e8f0">Device-Resident Indices</text>
+        <text x="24" y="94" font-size="10" fill="#94a3b8">Zero D2H syncs, static grid shape</text>
+
+        <rect x="14" y="114" width="222" height="42" rx="6" fill="#1e293b"/>
+        <text x="24" y="132" font-size="11" font-weight="600" fill="#e2e8f0">In-Kernel Deduplication</text>
+        <text x="24" y="148" font-size="10" fill="#94a3b8">Only unique rows cross PCIe</text>
+
+        <rect x="14" y="164" width="222" height="34" rx="6" fill="#1e293b"/>
+        <text x="24" y="184" font-size="10.5" font-weight="600" fill="#10b981">Grouped Prefill: 5x64 blocks</text>
+      </g>
+
+      <!-- Connector 2: To VRAM -->
+      <g transform="translate(678, 115)">
+        <line x1="0" y1="35" x2="48" y2="35" stroke="#60a5fa" stroke-width="3"/>
+        <polygon points="52,35 44,30 44,40" fill="#60a5fa"/>
+        <text x="24" y="20" font-size="10" font-weight="600" fill="#94a3b8" text-anchor="middle">Stage</text>
+      </g>
+
+      <!-- Subgraph 3: RTX PRO 6000 Blackwell GPU -->
+      <g transform="translate(738, 52)">
+        <rect width="342" height="200" rx="8" fill="#131b2a" stroke="#253346" stroke-width="1"/>
+        <text x="16" y="26" font-size="13" font-weight="700" fill="#34d399">RTX PRO 6000 BLACKWELL (96 GiB)</text>
+        <text x="16" y="44" font-size="10.5" fill="#64748b">SM120 Architecture · ~1.8 TB/s VRAM Bandwidth</text>
+
+        <!-- Inner Box 1: Hot-Expert Cache -->
+        <rect x="14" y="56" width="314" height="42" rx="5" fill="#162c24" stroke="#059669" stroke-width="1"/>
+        <text x="24" y="74" font-size="11" font-weight="700" fill="#34d399">VRAM Hot-Expert Cache (54-66 slots/layer)</text>
+        <text x="24" y="90" font-size="10" fill="#a7f3d0">Absorbs 61.5% of fetches at ~1.8 TB/s VRAM speed</text>
+
+        <!-- Inner Box 2: Non-expert BF16 weights -->
+        <rect x="14" y="104" width="314" height="38" rx="5" fill="#1e293b"/>
+        <text x="24" y="120" font-size="10.5" font-weight="600" fill="#e2e8f0">18.01 GiB Dense BF16 Weights</text>
+        <text x="24" y="134" font-size="9.5" fill="#94a3b8">Attention (11.7 GiB), Shared Expert, Dense MLP, LM Head</text>
+
+        <!-- Inner Box 3: Marlin Engine -->
+        <rect x="14" y="148" width="314" height="40" rx="5" fill="#1c2436" stroke="#3b82f6" stroke-width="1"/>
+        <text x="24" y="165" font-size="11" font-weight="700" fill="#60a5fa">Marlin NVFP4 MoE GEMM Kernel</text>
+        <text x="24" y="180" font-size="9.5" fill="#93c5fd">Zero modifications required · Bit-clean FP32 final reduction</text>
+      </g>
+    </g>
+
+    <!-- Bottom Footer Bar -->
+    <g transform="translate(48, 568)">
+      <rect width="1104" height="42" rx="8" fill="#111827" stroke="#1f2937" stroke-width="1"/>
+      <text x="20" y="26" font-size="11.5" font-weight="600" fill="#94a3b8">
+        RIG: <tspan fill="#f1f5f9">Ubuntu 26.04 · AMD Ryzen 9 9950X3D · 182 GiB Dual-Channel DDR5 · 1x RTX PRO 6000 96 GiB (SM120) · PCIe 5.0 x16</tspan>
+      </text>
+      <text x="1084" y="26" font-size="11" font-weight="600" fill="#94a3b8" text-anchor="end">Logprob drift matches baseline run-to-run spread</text>
+    </g>
+  </g>
+</svg>

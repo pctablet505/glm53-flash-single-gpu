@@ -2,7 +2,11 @@
 
 **~16 tok/s decode · ~1750 tok/s prefill · 304,800-token prompt prefilled on a single 96 GiB card.**
 
-A 181.3 GiB checkpoint served from a 96 GiB GPU on a consumer desktop, with no
+<p align="center">
+  <img src="assets/primary-graphic.svg" alt="GLM-5.3-Flash on a Single RTX PRO 6000: 16.5 tok/s decode, 1,771 tok/s prefill, 304.8k context" width="100%">
+</p>
+
+A 181.3 GiB checkpoint served efficiently from a single 96 GiB GPU on a consumer desktop, with no
 loss of output quality.
 
 ## What this repository is
