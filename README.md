@@ -1,13 +1,13 @@
 <a href="RUNNING-GLM53-ON-ONE-GPU.md">
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
-  <img src="assets/hero-light.svg" width="100%" alt="GLM-5.3 on one GPU. The usable speed on one 96 GiB card, not the advertised one. GLM-5.3-Flash, 320B total and 18B active, in NVFP4 on one RTX PRO 6000.">
+  <img src="assets/hero-light.svg" width="100%" alt="GLM-5.3 on one GPU. The usable speed on one 96 GiB card, not the advertised one.">
 </picture>
 </a>
 
-**The usable speed on one 96 GiB card, not the advertised one.** GLM-5.3-Flash (320B total, 18B active, NVFP4) on
-one RTX PRO 6000: 16.50 tok/s peak decode (14.99 in the shipped setup), 1,771 tok/s prefill, and one 304,800-token
-prompt prefilled. Every number comes with its conditions below.
+GLM-5.3-Flash (320B total, 18B active) is 181 GiB in NVFP4, and the card has 96 GiB. So most of the model lives in
+host RAM, and the experts each token needs cross PCIe while it decodes. On one RTX PRO 6000 it still reaches
+16.50 tok/s peak decode (14.99 in the shipped setup). Every number comes with its conditions below.
 
 <p align="center">
   <img src="assets/primary-graphic.svg" alt="GLM-5.3-Flash on a Single RTX PRO 6000: 16.5 tok/s decode, 1,771 tok/s prefill, 304.8k context" width="100%">

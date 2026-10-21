@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-labelledby="t d">
   <title id="t">GLM-5.3 on one GPU</title>
-  <desc id="d">The usable speed on one 96 GiB card, not the advertised one. GLM-5.3-Flash, 320B total and 18B active, in NVFP4 on one RTX PRO 6000.</desc>
+  <desc id="d">The usable speed on one 96 GiB card, not the advertised one.</desc>
   <style>
     .s{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans",Helvetica,Arial,sans-serif}
     .m{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
@@ -18,9 +18,7 @@
   <path d="M96 0V74" stroke="#0f172a" stroke-width="8"/>
   <rect x="84.8" y="70" width="22.4" height="15.2" rx="4" fill="#0f172a"/>
   <circle cx="96" cy="112.4" r="25.2" fill="#f59e0b" stroke="#b45309" stroke-width="4"/>
-  <text class="s" x="166" y="132" font-size="64" font-weight="700" fill="#0f172a" letter-spacing="-1">GLM-5.3 on one GPU</text>
-  <text class="s" x="168" y="182" font-size="30" fill="#1e293b">The usable speed on one 96 GiB card, not the advertised one.</text>
-  <text class="s" x="168" y="220" font-size="20" fill="#475569">GLM-5.3-Flash, 320B total and 18B active, in NVFP4 on one RTX PRO 6000.</text>
-  <text class="m" x="168" y="266" font-size="16" fill="#475569">github.com/pctablet505/glm53-flash-single-gpu</text>
-  <text class="m" x="1152" y="266" font-size="16" fill="#475569" text-anchor="end">pctablet505</text>
+  <text class="s" x="166" y="118" font-size="72" font-weight="700" fill="#0f172a" letter-spacing="-1">GLM-5.3 on one GPU</text>
+  <text class="s" x="168" y="184" font-size="48" fill="#1e293b">The usable speed on one 96 GiB card,</text>
+  <text class="s" x="168" y="242" font-size="48" fill="#1e293b">not the advertised one.</text>
 </svg>
