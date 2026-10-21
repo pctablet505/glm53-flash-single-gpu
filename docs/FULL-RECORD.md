@@ -1,5 +1,7 @@
 # The full record: GLM-5.3-Flash (320B/18B, NVFP4) on **one** RTX PRO 6000
 
+This is the previous front page, moved unchanged; where it differs from the README, the README is current.
+
 This page keeps everything that used to be on the repository's front page, word for word: every result with its
 conditions, the hardware, the context and prefill measurements, stability, the full reproduction steps, the
 agent-backend notes, what did not work, the document map and the honest limits. The short version is the
