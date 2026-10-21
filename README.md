@@ -1,13 +1,50 @@
-# GLM-5.3-Flash (320B/18B, NVFP4) on **one** RTX PRO 6000
+<a href="RUNNING-GLM53-ON-ONE-GPU.md">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img src="assets/hero-light.svg" width="100%" alt="GLM-5.3 on one GPU. The usable speed on one 96 GiB card, not the advertised one. GLM-5.3-Flash, 320B total and 18B active, in NVFP4 on one RTX PRO 6000.">
+</picture>
+</a>
 
-**~16 tok/s decode · ~1750 tok/s prefill · 304,800-token prompt prefilled on a single 96 GiB card.**
+**The usable speed on one 96 GiB card, not the advertised one.** GLM-5.3-Flash (320B total, 18B active, NVFP4) on
+one RTX PRO 6000: 16.50 tok/s peak decode (14.99 in the shipped setup), 1,771 tok/s prefill, and one 304,800-token
+prompt prefilled. Every number comes with its conditions below.
 
 <p align="center">
   <img src="assets/primary-graphic.svg" alt="GLM-5.3-Flash on a Single RTX PRO 6000: 16.5 tok/s decode, 1,771 tok/s prefill, 304.8k context" width="100%">
 </p>
 
-A 181.3 GiB checkpoint served efficiently from a single 96 GiB GPU on a consumer desktop, with no
-loss of output quality.
+One of the eight bugs on the way gives no error at all: the model just emits the same token forever.
+**[Start with RUNNING, where that bug is →](RUNNING-GLM53-ON-ONE-GPU.md)**
+
+<details>
+<summary><b>Document map</b></summary>
+
+
+| file | what it is |
+|---|---|
+| [**RUNNING-GLM53-ON-ONE-GPU.md**](RUNNING-GLM53-ON-ONE-GPU.md) | Getting it to run **correctly**: build constraints, memory layout, and the eight bugs, including one that produces no error at all. Start here. |
+| [**OPTIMIZING-GLM53-ON-ONE-GPU.md**](OPTIMIZING-GLM53-ON-ONE-GPU.md) | Getting it to run **fast**: the measured cost model, the gather kernel, hot-expert pinning, prefill grouping, stability, and the configuration knobs that do nothing. |
+| [**FURTHER-OPTIMIZATION-RESEARCH.md**](FURTHER-OPTIMIZATION-RESEARCH.md) | What is left, and what has since been struck off. Every 2026-09-01 recommendation now carries its measured verdict, which makes it a scorecard of predictions against outcomes. |
+| [**LAB-NOTEBOOK.md**](LAB-NOTEBOOK.md) | The chronological account: false starts, the mistakes that cost the most, and the operational traps. Read this one if you are going to do this yourself. |
+| [**FINDINGS.md**](FINDINGS.md) | One-page condensed version of RUNNING. |
+| `GLM53-SM120.patch` | All source changes needed to make the model run on SM120. |
+| `serve.sh` | The original (pre-optimization) launcher, kept because it is the *minimal correct* configuration. Superseded for speed by `serve-opt.sh`, which lives in the vLLM working tree. |
+| `glm53-llamacpp-run.sh` | An abandoned llama.cpp/GGUF route, kept for reference. |
+| `artifacts/` | Raw measurement logs referenced below, currently `prefill-fresh-2026-09-02.txt`. |
+
+The optimization itself is three files in the vLLM working tree, not in this
+repository (they are patches against a fork that is itself unreleased):
+
+- `model_executor/offloader/dma_stage.py`: the Triton gather kernel, the
+  hot-expert cache, the profile recorder.
+- `model_executor/layers/fused_moe/experts/marlin_moe.py`: the hook into
+  vLLM's MoE path, the bounds checks, the grouped-prefill group walk
+  (`_prefill_groups_enabled`, and the `topk_ids.shape[0] >= 48` gate), and the
+  opt-in router pruning.
+- `serve-opt.sh`: every tuned default, each with the measurement that justifies
+  it in a comment. If you read one file, read this one.
+
+</details>
 
 ## What this repository is
 
@@ -17,20 +54,20 @@ An engineering log, not a product. Over five days one person got
 workstation card, and then made it roughly 1.5x faster to decode and 2.9x faster
 to prefill. This repository records:
 
-- the **eight bugs** between a fresh checkout and correct output — one of which
+- the **eight bugs** between a fresh checkout and correct output, one of which
   produces no error at all, just a model that emits the same token forever;
 - the **three optimizations** that produced the numbers above, with the code
   ideas behind them;
 - at greater length, the **dozen-plus things that were measured and did not
-  work** — which is the part most likely to save you time.
+  work**, which is the part most likely to save you time.
 
 If you are here because you want to run a too-large MoE on one card, read
 [RUNNING](RUNNING-GLM53-ON-ONE-GPU.md) then
 [OPTIMIZING](OPTIMIZING-GLM53-ON-ONE-GPU.md). If you are here because you are
 about to try one of the ideas below, check [§ What did **not** work](#what-did-not-work)
-first — several plausible ones are already closed by measurement.
+first: several plausible ones are already closed by measurement.
 
-> ### Status and caveats — read before quoting anything here
+> ### Status and caveats: read before quoting anything here
 >
 > - This is a **research log against a moving target**: a specific unreleased
 >   vLLM fork (PR #53906, `0.29.0.dev0+glm53`) plus local patches, one specific
@@ -41,14 +78,14 @@ first — several plausible ones are already closed by measurement.
 >   differences smaller than that as noise, and we try to say so where it
 >   matters.
 > - Claims that were later shown to be wrong are **struck through or boxed, not
->   deleted** — including a couple that were reversed twice. The reversal is
+>   deleted**, including a couple that were reversed twice. The reversal is
 >   usually the useful part.
 > - The honest framing of the headline: this is **the best result we know of for
 >   this model on a single RTX PRO 6000, and we could not find a better
 >   published figure.** That is a statement about our search, not a record
 >   claim.
 
-> ### Update — later on 2026-09-02
+> ### Update: later on 2026-09-02
 >
 > Five things changed after the body of this page was first written:
 >
@@ -70,7 +107,7 @@ first — several plausible ones are already closed by measurement.
 >   only `low` / `high` / `max`, **anything else silently becomes `max`**, and
 >   `max` is usually the wrong choice (§ *Using it as an agent backend*).
 >
-> Earlier the same day: prefill — not decode — turned out to be the largest
+> Earlier the same day: prefill, not decode, turned out to be the largest
 > quality-neutral win (614 → **1729–1771 tok/s**, logged in
 > [`artifacts/prefill-fresh-2026-09-02.txt`](artifacts/prefill-fresh-2026-09-02.txt)),
 > and a "bit-identical" correctness claim was withdrawn because the *test* was
@@ -91,26 +128,26 @@ about not paying for that.
 | | |
 |---|---|
 | **Decode, peak measured** | **16.50 tok/s**, sustained over 8 back-to-back 200-token generations (2026-09-01, 66 hot slots, 262k context) |
-| **Decode, shipped configuration** | **14.99 tok/s** at the shipped 54 hot slots, against 14.92 at 48 slots on the same benchmark — the difference is inside the ±1 tok/s run-to-run spread. At 62 slots the same build measured **15.8 tok/s** on prose and **17.1 tok/s** on a coding prompt as whole-request rates. **None of these are a controlled A/B against the 16.50 row** — context, slot count, prefill mode and CUDA-graph mode all differ |
+| **Decode, shipped configuration** | **14.99 tok/s** at the shipped 54 hot slots, against 14.92 at 48 slots on the same benchmark; the difference is inside the ±1 tok/s run-to-run spread. At 62 slots the same build measured **15.8 tok/s** on prose and **17.1 tok/s** on a coding prompt as whole-request rates. **None of these are a controlled A/B against the 16.50 row**: context, slot count, prefill mode and CUDA-graph mode all differ |
 | best single 10 s window observed | 17.4 tok/s (2026-09-01 configuration) |
 | decode *at long context*, streamed | **18.2 – 18.4 tok/s** at 10k, **17.5 – 18.4 tok/s** at 35k across two runs |
 | **Prefill** | **1771 / 1729 tok/s** on two fresh ~10.3k-token prompts (TTFT **5.82 s** / **5.96 s**); **1576 tok/s** on a fresh 35,571-token prompt (TTFT **22.57 s**). Logged: [`artifacts/prefill-fresh-2026-09-02.txt`](artifacts/prefill-fresh-2026-09-02.txt) |
-| prefill *before* grouped staging | **614 tok/s** — a 10,296-token prompt took **16.8 s** to the first token |
-| **Longest prompt actually prefilled** | **304,800 tokens**, TTFT **205 s** = 1,487 tok/s — 93% of the advertised context (§ *Context*) |
-| a 14-token prompt (below the gate, zero-copy path) | TTFT **0.85 s** — the control that makes the gate legible |
+| prefill *before* grouped staging | **614 tok/s**: a 10,296-token prompt took **16.8 s** to the first token |
+| **Longest prompt actually prefilled** | **304,800 tokens**, TTFT **205 s** = 1,487 tok/s, 93% of the advertised context (§ *Context*) |
+| a 14-token prompt (below the gate, zero-copy path) | TTFT **0.85 s**, the control that makes the gate legible |
 | an exact repeat of a prompt | ~3.2 s to the first token (aligned-prefix reuse) |
-| model | `dealignai/GLM-5.3-Flash-ABLITERATED-NVFP4` — 320B total / 18B active, 45 layers, 42 MoE layers, 288 routed experts, top-8 |
+| model | `dealignai/GLM-5.3-Flash-ABLITERATED-NVFP4`: 320B total / 18B active, 45 layers, 42 MoE layers, 288 routed experts, top-8 |
 | checkpoint on disk | 181.29 GiB (163.27 GiB of it routed experts) |
 | context configured | `--max-model-len 327680` (was 262,144 until 2026-09-02) |
 | context *of the decode measurements* | short prompts (tens of tokens), 200-token generations. Decode rate is roughly flat in context on this stack when measured streamed; an earlier run put 512k at ~7% below 256k |
 | batch shape | `--max-num-seqs 1`, one stream, no concurrency |
-| speculative decoding | MTP, `num_speculative_tokens: 2`. On a coding prompt at T=0: **64% of draft tokens accepted = 1.28 per step** (position 0: 75%, position 1: 53%), i.e. 2.28 tokens per forward pass. A different generation measured 1.81 accepted/step — acceptance is generation-specific, always quote the prompt. Prose is ~55–60% |
-| MoE kernel | `marlin` (**mandatory** — see [RUNNING](RUNNING-GLM53-ON-ONE-GPU.md) bug 7) |
+| speculative decoding | MTP, `num_speculative_tokens: 2`. On a coding prompt at T=0: **64% of draft tokens accepted = 1.28 per step** (position 0: 75%, position 1: 53%), i.e. 2.28 tokens per forward pass. A different generation measured 1.81 accepted/step; acceptance is generation-specific, always quote the prompt. Prose is ~55–60% |
+| MoE kernel | `marlin` (**mandatory**; see [RUNNING](RUNNING-GLM53-ON-ONE-GPU.md) bug 7) |
 | offload | `--offload-backend uva --cpu-offload-gb 125 --cpu-offload-params experts` |
-| hot-expert cache | **54** of 288 experts pinned in VRAM **per layer**, frequency-ordered — ~24 GiB. (66 was in effect when 16.50 was measured; slots are the only place VRAM headroom comes from, so this number walks down when headroom is needed: 68 → 66 → 62 → 54) |
+| hot-expert cache | **54** of 288 experts pinned in VRAM **per layer**, frequency-ordered, ~24 GiB. (66 was in effect when 16.50 was measured; slots are the only place VRAM headroom comes from, so this number walks down when headroom is needed: 68 → 66 → 62 → 54) |
 | grouped prefill staging | `VLLM_MOE_PREFILL_GROUPS=1`, gated to prompts of **≥ 48 tokens** |
 | KV cache | **derived from the context**, `MAX_LEN × 17,200 B` → 5,636,096,000 B (~5.25 GiB) → **375,543 tokens** at 327,680 context = 1.15x concurrency. Measured cost is 15.0–15.7 KiB/token |
-| CUDA graphs | **on** (piecewise) but **not breakable** — `VLLM_USE_BREAKABLE_CUDAGRAPH=0`. Both halves of that are load-bearing; see § *Stability* |
+| CUDA graphs | **on** (piecewise) but **not breakable**: `VLLM_USE_BREAKABLE_CUDAGRAPH=0`. Both halves of that are load-bearing; see § *Stability* |
 | stability | 40 varied requests (T=0/0.7/1.0, four 9k-token prefills) plus a 35,553-token prompt: **0 failures, 0 Xid, 592 s** |
 | quality | unmodified. The fast prefill path is *numerically indistinguishable from the baseline's own run-to-run variability*, measured per-token on 13,519 prompt logprobs (§ *Prefill*). Router pruning (+24%) exists but is **not shipped** |
 | engine | vLLM PR #53906 (`0.29.0.dev0+glm53`) + local patches, FlashInfer 0.6.18 |
@@ -136,7 +173,7 @@ VRAM                 ~1800 GB/s      (vendor figure, not measured here)
 
 The single most important number on that list is **64.6 GB/s**. Host RAM is only
 1.15x PCIe here, which kills every "compute the offloaded experts on the CPU
-instead" design before it starts — see
+instead" design before it starts; see
 [FURTHER §5](FURTHER-OPTIMIZATION-RESEARCH.md#5-dead-cpu-co-execution-freetoken-hybrid).
 
 ---
@@ -151,21 +188,21 @@ transfer. Three changes moved it. First, the transfer was slow not because the
 memory is remote but because `index_select` gathers it with narrow scattered
 loads across the PCIe BAR; replacing that with a wide contiguous **Triton gather
 kernel that takes its indices as a device tensor** roughly doubled the effective
-link rate *and* — because it needs no host sync — let CUDA graphs come back on,
+link rate *and*, because it needs no host sync, let CUDA graphs come back on,
 worth another 13%: **13.5 tok/s**. Second, vLLM's offloader decides residency
 *per layer, in module order*, so the experts that stay in VRAM are arbitrary.
-Routing is in fact strongly skewed **within** each layer — the hottest ~36% of a
-layer's experts serve 75% of its fetches — so we offload *more* (125 GiB instead
+Routing is in fact strongly skewed **within** each layer: the hottest ~36% of a
+layer's experts serve 75% of its fetches, so we offload *more* (125 GiB instead
 of 105) and spend the VRAM that frees on a **frequency-ranked hot-expert cache**,
 66 slots per layer, selected by a device-side slot table the same kernel reads:
-**16.5 tok/s**. Third — and this one is not about decode at all — a *prefill*
+**16.5 tok/s**. Third (and this one is not about decode at all), a *prefill*
 chunk routes to essentially every expert, which blew past the staging buffer and
 fell back to zero-copy BAR reads at ~23 GB/s; walking the experts in 64-wide
 groups and DMA-staging each group took prefill from **614 to ~1750 tok/s**.
-Everything else we tried — a bigger LRU cache, native-FP4 kernels, CPU
+Everything else we tried (a bigger LRU cache, native-FP4 kernels, CPU
 co-execution, GPUDirect Storage, deeper speculation, n-gram drafting, per-layer
 slot water-filling, re-profiling the hot set on a mixed workload, raising
-`gpu-memory-utilization` — was measured and closed.
+`gpu-memory-utilization`) was measured and closed.
 
 ---
 
@@ -187,13 +224,13 @@ And the same table for **prefill**, which no decode benchmark had ever shown:
 | step | prefill tok/s | 10k-token TTFT | what changed |
 |---|---|---|---|
 | zero-copy BAR reads (every configuration above) | 614 | 16.8 s | a prefill chunk exceeds the 64-expert staging buffer, so staging declines and Marlin re-reads every offloaded expert over the BAR |
-| + grouped DMA staging, all prompts | ~1750 | ~5.9 s | but a 14-token prompt now paid **2.05 s** to first token, against 0.85 s zero-copy — see § *Prefill* |
+| + grouped DMA staging, all prompts | ~1750 | ~5.9 s | but a 14-token prompt now paid **2.05 s** to first token, against 0.85 s zero-copy; see § *Prefill* |
 | + gate at ≥ 48 prompt tokens *(shipped)* | **1729 – 1771** | **5.82 – 5.96 s** | short prompts go back to zero-copy, which is cheaper for them |
 
 Three of those rows are counter-intuitive and worth stating plainly:
 
 - **Offloading *more* made it faster.** At offload 125 with no pinning the same
-  server does **11.34 tok/s** — the *worst* of the three configurations, because
+  server does **11.34 tok/s**, the *worst* of the three configurations, because
   more bytes cross PCIe and nothing absorbs them. Offload 105 with no pinning is
   13.73. The 125 + 66-slot combination is 16.5. The offload and the cache are a
   **matched set**; changing one without the other loses most of the gain.
@@ -203,7 +240,7 @@ Three of those rows are counter-intuitive and worth stating plainly:
   gather kernel had to take *device-side* indices rather than doing the obvious
   `topk_ids.tolist()` loop.
 - **The 2.9x prefill win and the 24% decode win came from the same staging
-  buffer** — one by using it, one by *not* using it. Grouping helps a 10k-token
+  buffer**: one by using it, one by *not* using it. Grouping helps a 10k-token
   prompt and hurts a 14-token one, because a short prompt routes to far fewer
   experts than the 288 a group walk stages. The crossover is ~40 tokens.
 
@@ -212,28 +249,28 @@ Three of those rows are counter-intuitive and worth stating plainly:
 ## Context: the advertised ceiling is not the usable one
 
 The context was `--max-model-len 262144` for most of this work and had **never
-been prefilled anywhere near that length**. When it finally was, it failed — and
+been prefilled anywhere near that length**. When it finally was, it failed, and
 raising the number did not help, because the number was not the constraint.
 
 **Long-prompt activations are allocated per request and scale with sequence
 length.** Attention workspaces and the sparse indexer are not reserved up front,
 so what decides whether a 200k-token prompt survives is **how much VRAM is free
 at that moment**, not what `--max-model-len` says. Measured, varying only the
-hot-expert slot count (which is the only thing that frees VRAM here — see below):
+hot-expert slot count (which is the only thing that frees VRAM here; see below):
 
 | hot slots | free VRAM | longest prompt that prefilled | TTFT |
 |---|---|---|---|
-| 60 | 3,397 MiB | **a 180k-token prompt died** — `CUDA out of memory. Tried to allocate 116.00 MiB` | — |
-| **54** *(shipped)* | 6,177 MiB | **304,800 tokens** — 93% of the advertised 327,680 | 205 s (1,487 tok/s) |
+| 60 | 3,397 MiB | **a 180k-token prompt died**: `CUDA out of memory. Tried to allocate 116.00 MiB` | n/a |
+| **54** *(shipped)* | 6,177 MiB | **304,800 tokens**, 93% of the advertised 327,680 | 205 s (1,487 tok/s) |
 | 48 | 8,817 MiB | 233,670 tokens *(the largest tried at this setting, not a limit)* | 158 s |
 
 **The rule this produced: never advertise a context you have not prefilled at.**
-Both earlier settings — 262,144, and the first attempt at 327,680 — were
+Both earlier settings (262,144, and the first attempt at 327,680) were
 advertised and never tested near their limit.
 
 **Paying for it was nearly free.** The obvious objection is that hot slots are
 what makes decode fast, so cutting them should cost throughput. Measured, it
-barely does: **48 slots → 14.92 tok/s, 54 slots → 14.99 tok/s** — 0.07 apart,
+barely does: **48 slots → 14.92 tok/s, 54 slots → 14.99 tok/s**, 0.07 apart,
 inside the ±1 tok/s run-to-run spread, because 48 → 54 is only about **3 points
 of cache hit rate**. Earlier versions of these documents implied the slot cost
 was larger than that; **that was an over-claim**. In this range the slot count is
@@ -276,8 +313,8 @@ Measured on the 16.5 tok/s configuration, streamed, before any prefill work:
 
 **Why it was slow.** A prefill chunk routes to essentially *all* 288 experts, so
 `n > MAX_STAGED_EXPERTS` (64), `stage()` returns `None`, and Marlin falls back to
-reading every offloaded expert zero-copy over the PCIe BAR — ~23 GB/s, with tile
-re-reads — instead of the 52 GB/s DMA gather that decode uses. Decode was fast
+reading every offloaded expert zero-copy over the PCIe BAR (~23 GB/s, with tile
+re-reads) instead of the 52 GB/s DMA gather that decode uses. Decode was fast
 *because* it touches only 8 experts per layer; prefill was slow for exactly the
 same reason inverted.
 
@@ -290,7 +327,7 @@ fill disjoint rows of one buffer rather than producing partial sums to add up.
 
 Measured on the shipped server (bare `./serve-opt.sh` defaults), streaming,
 TTFT = time to the first content chunk, with **prompt salts never sent to that
-server before** so nothing could come from the prefix cache — logged in
+server before** so nothing could come from the prefix cache; logged in
 [`artifacts/prefill-fresh-2026-09-02.txt`](artifacts/prefill-fresh-2026-09-02.txt):
 
 | prompt | tokens | TTFT | prefill | decode after |
@@ -298,14 +335,14 @@ server before** so nothing could come from the prefix cache — logged in
 | 10k fresh #1 | 10,313 | **5.82 s** | **1771 tok/s** | 18.2 tok/s |
 | 10k fresh #2 | 10,314 | **5.96 s** | **1729 tok/s** | 18.2 tok/s |
 | 30k fresh | 35,571 | **22.57 s** | **1576 tok/s** | 18.4 tok/s |
-| 14-token control (zero-copy path) | 14 | **0.85 s** | — | — |
+| 14-token control (zero-copy path) | 14 | **0.85 s** | n/a | n/a |
 
 against **614 tok/s / 16.8 s** on the same class of 10k-token prompt before
 grouping. Decode is unaffected: 18.2–18.4 tok/s at these contexts. At the far
 end, a **304,800-token** prompt prefills in 205 s = 1,487 tok/s.
 
 *(An earlier, unlogged "1762 tok/s / 5.8 s" is quoted in the launcher comment and
-in a few places below. The logged range above supersedes it — the two agree to
+in a few places below. The logged range above supersedes it; the two agree to
 within the spread of two runs, which is exactly why it is worth logging.)*
 
 Two failures on the way there are worth more than the win:
@@ -318,14 +355,14 @@ fails with `aoti_torch_get_stride`.)
 
 **2. The short-prompt trap, and the measurement mistake it caused.** The first
 shipped version grouped *every* prefill, including a 14-token prompt that only
-routes to ~100 experts — so it staged all 288 and paid **2.05 s** to the first
+routes to ~100 experts, so it staged all 288 and paid **2.05 s** to the first
 token, against the **0.85 s** the zero-copy path takes on that same prompt. The
 200-token benchmark then read **12.5 tok/s instead of 15.8**, and that was
 misread as a *decode* regression. It was not: the decode rate itself was
 unchanged, and streaming TTFT separately from the inter-token rate showed it
 immediately. The same arithmetic explains a 40-request soak taken during that
-window — a 150-token math generation at 16.7 tok/s takes 9.0 s, and adding 2.05 s
-of TTFT predicts 13.6 tok/s end-to-end against 13.9 measured — while the
+window: a 150-token math generation at 16.7 tok/s takes 9.0 s, and adding 2.05 s
+of TTFT predicts 13.6 tok/s end-to-end against 13.9 measured, while the
 9,107-token class went **7.83 → 11.34 tok/s** in the same run. The gate
 (`topk_ids.shape[0] >= 48`, static per captured graph, so CUDA-graph-safe) sends
 short prompts back to zero-copy.
@@ -336,11 +373,11 @@ short prompts back to zero-copy.
 
 The launcher and the source comment for this path used to say the grouped result
 is *"bit-identical to the single pass (T=0 outputs identical on 3k and 10k
-prompts)"*. **That test proves nothing, and the claim is withdrawn** — both
+prompts)"*. **That test proves nothing, and the claim is withdrawn**: both
 comments were corrected in the engine tree on 2026-09-02 and now state the
 fresh-prompt logprob equivalence instead.
 
-Baseline prefill on this stack — with no code change at all — produces different
+Baseline prefill on this stack, with no code change at all, produces different
 output run to run. The same 3k and 9k prompts at T=0, `max_tokens=40`, hashed
 A, B, A across three runs of the *unmodified* build. The pattern matches
 prefix-cache state reuse (mamba `align` mode caches state at scheduler-step
@@ -360,7 +397,7 @@ measures the candidate against the baseline's *own* fresh-vs-cached drift:
 | **grouped vs baseline**, 9k | 10,300 | 0.000012 | 0.00022 | 0.014 | 5.01 | 7 (0.07%) |
 
 The honest statement is therefore: **grouped prefill is numerically
-indistinguishable from the baseline's own run-to-run variability** — not that it
+indistinguishable from the baseline's own run-to-run variability**, not that it
 is bit-identical. Both distributions put half of all tokens within 10⁻⁵ nats and
 both put ~0.1% of tokens more than 1 nat away.
 
@@ -368,12 +405,12 @@ both put ~0.1% of tokens more than 1 nat away.
 
 `--enable-prefix-caching` is on, and re-sending an identical prompt is now
 noticeably cheaper: ~3.2 s to first token for the same 10k prompt. It is not
-reliable and it is not observable — the same test measured **no** benefit
+reliable and it is not observable: the same test measured **no** benefit
 earlier in the day (16.6 s → 16.9 s on an identical re-send) and 9.6 s on
 another run, and `vllm:prefix_cache_hits` / `vllm:prefix_cache_queries` read
 **0/0** across every one of these requests, so timing is the only evidence we
 have. Coding agents resend the whole conversation each turn, so this is worth
-more than it looks — and worth measuring on your own traffic rather than
+more than it looks, and worth measuring on your own traffic rather than
 trusting.
 
 ---
@@ -383,23 +420,23 @@ trusting.
 The engine used to die mid-serving with `CUDA error: an illegal memory access`.
 The kernel log names it: `Xid 31 ... MMU Fault`. The Python traceback points at
 the FlashInfer sparse-MLA backend, but CUDA's own message warns that such errors
-are *reported asynchronously at some later call* — a stack is where the error was
+are *reported asynchronously at some later call*: a stack is where the error was
 noticed, not where it was caused. (For scale: zero such faults in 22 runs and
 ~80 requests the day before it started.)
 
 Two changes were made, and the pair holds:
 
-1. **Bounds-check every id-indexed access in the staging path** — both Triton
+1. **Bounds-check every id-indexed access in the staging path**: both Triton
    gather kernels, `build_local_expert_map`'s `scatter_reduce_`, and the Marlin
    call site. A padded or sentinel expert id (`-1`, or `n_experts`) would index
    past the host tensor, or read garbage past the slot table and then
-   *dereference that garbage* — which is precisely an unmapped address, i.e.
+   *dereference that garbage*, which is precisely an unmapped address, i.e.
    this Xid.
 2. **`VLLM_USE_BREAKABLE_CUDAGRAPH=0`.** vLLM auto-enables "breakable" CUDA
    graphs for this hybrid model. Every build that ran under breakable graphs on
    2026-09-02 faulted between request 2 and request 24. With it off, a
-   40-request varied soak at T=0/0.7/1.0 — including four 9k-token prefills and
-   a 30k-token prompt — ran with **0 failures and 0 Xid at unchanged speed
+   40-request varied soak at T=0/0.7/1.0, including four 9k-token prefills and
+   a 30k-token prompt, ran with **0 failures and 0 Xid at unchanged speed
    (15.77 tok/s)**, and the later shipped build repeated that with a 35,553-token
    prompt added.
 
@@ -408,20 +445,20 @@ overlapping across streams while the staging buffers are shared, which is
 consistent with a race that breakable mode makes possible. Treat
 `VLLM_USE_BREAKABLE_CUDAGRAPH=0` as a measured fix with an unproven cause.
 
-### `--max-num-batched-tokens 8192` is a floor — reversed, then reversed back
+### `--max-num-batched-tokens 8192` is a floor: reversed, then reversed back
 
 This one changed twice in one day and the sequence is the point.
 
 > **First claim (early 2026-09-02).** *"8192 is a floor; 2048 and 4096 both die
 > with an illegal memory access on the second request."*
 >
-> **Withdrawn the same day** — because the *same* fault then hit a run at
+> **Withdrawn the same day**, because the *same* fault then hit a run at
 > **8192** after 12 requests. Smaller batch sizes looked causal only because
 > they changed the allocation layout, so the corruption surfaced on request 2
 > instead of request 12. Attributing it to a batch size was pattern-matching.
 
 > **RE-TESTED and REINSTATED (2026-09-02, ~07:5x).** With
-> `VLLM_USE_BREAKABLE_CUDAGRAPH=0` shipped — so the Xid 31 fault is gone — and
+> `VLLM_USE_BREAKABLE_CUDAGRAPH=0` shipped (so the Xid 31 fault is gone) and
 > the staging bounds checks in place, **`MAX_BATCHED=4096` still dies**: a 500
 > on the very first short decode request, and a dead engine behind it.
 >
@@ -462,15 +499,15 @@ The CUDA toolchain is a triple constraint on this platform and only one point
 satisfies it. See [RUNNING §1](RUNNING-GLM53-ON-ONE-GPU.md#1-build-environment)
 for the full recipe, the `nvcc`-vs-headers guard, and the `lib64` shim.
 
-You need vLLM from **PR #53906** (Glm5Next support) — it is in no released vLLM
-— plus the source changes in [`GLM53-SM120.patch`](GLM53-SM120.patch).
+You need vLLM from **PR #53906** (Glm5Next support; it is in no released vLLM)
+plus the source changes in [`GLM53-SM120.patch`](GLM53-SM120.patch).
 
 ### 2. Generate the hot-expert profile
 
 The frequency profile is **not** shipped with a checkpoint; it is recorded from
 your own traffic, and it is **tied to the `cpu_offload_gb` it was recorded at**
 (residency is a whole-layer decision, so a different offload means a different
-set of host-side layers and the layer indices stop lining up — a profile from
+set of host-side layers and the layer indices stop lining up: a profile from
 offload 125 used at 127 measured 15.09 vs 16.76 tok/s, *silently*).
 
 ```bash
@@ -532,13 +569,13 @@ Boot is ~5–6 minutes: 181 GiB load, then a **silent** multi-minute Marlin
 repack at ~96% CPU with no log output (it is not a hang), then graph capture.
 
 *(On the machine these notes come from, a small local supervisor GUI called
-Coldstart sits in front of that launcher — it starts and stops the server,
+Coldstart sits in front of that launcher: it starts and stops the server,
 adopts one that is already running, and shows decode **and** prefill tok/s. It is
 not part of this repository and nothing here depends on it. It is mentioned only
 because it is the reason `KV_BYTES` had to be derived from `MAX_LEN`: it passes
 one and not the other.)*
 
-### 4. The guards around it — do not skip these
+### 4. The guards around it: do not skip these
 
 `serve-opt.sh` refuses to start rather than take the machine down. Each guard
 exists because the corresponding failure actually happened:
@@ -547,7 +584,7 @@ exists because the corresponding failure actually happened:
 |---|---|
 | **host-RAM check**: `avail >= CPU_OFFLOAD_GB + 30` | There is no swap, and an OOM kill of a pinned allocation takes the desktop with it. The allowance was **45 until 2026-09-02**, set from a 110 GiB offload that peaked at ~168 GiB. Re-measured on the shipped configuration: steady state is **offload + ~16 GiB** (141 GiB used at offload 125), because the safetensors reads that inflated the original figure go through *reclaimable* page cache, which `MemAvailable` already discounts. **30** keeps a 14 GiB cushion over the measurement instead of a 29 GiB one, and stops the guard from refusing a launch that would have been fine. |
 | **duplicate-launch check** (port bound, or another `vllm serve` from this tree) | A vLLM that OOMs on the GPU **hangs** instead of exiting, keeping its VRAM and its process tree. A second launch then stalls forever behind it with an empty log, which looks like a slow start. |
-| **cwd shadowing check** (`vllm.__file__` must resolve under `$ROOT/src/vllm/`) | The repo root is *itself* a second, uncompiled vLLM checkout. Python puts cwd first on `sys.path`, so launching from `$ROOT` imports the copy with no compiled extensions and fails as *"vllm.vllm_flash_attn requires the CUDA flash attention extensions"* — which reads as a broken build. |
+| **cwd shadowing check** (`vllm.__file__` must resolve under `$ROOT/src/vllm/`) | The repo root is *itself* a second, uncompiled vLLM checkout. Python puts cwd first on `sys.path`, so launching from `$ROOT` imports the copy with no compiled extensions and fails as *"vllm.vllm_flash_attn requires the CUDA flash attention extensions"*, which reads as a broken build. |
 | **profile/offload mismatch warning** | A profile captured at a different `cpu_offload_gb` still parses and still runs. It just quietly costs ~10%. |
 | **`lib64` symlink** | pip CUDA wheels lay out `lib/`; FlashInfer's JIT hardcodes `-L$cuda_home/lib64`. Without it the first forward pass fails to *link* and surfaces as the misleading `Ninja build failed`. |
 | **`KV_BYTES` derived from `MAX_LEN`** | The two used to be set independently, so changing the context left the KV cache sized for the old one and vLLM refused to start (*"N GiB KV cache is needed, larger than the available"*). |
@@ -563,7 +600,7 @@ And three settings that must not be "tuned":
   weights + hot cache are fixed. If you need headroom, take it from hot slots or
   raise the offload.
 - **Do not re-profile the hot-expert set on mixed-temperature traffic.** Tried
-  it — a profile captured over prose/code/chat/long/math at T=0/0.7/1.0 and an
+  it; a profile captured over prose/code/chat/long/math at T=0/0.7/1.0 and an
   offload of 130 measured *worse on everything*: prose 13.02 vs 15.77, coding
   16.10 vs 17.10, prefill 1698 vs 1762 (the prefill figure current at the time),
   for +4 GiB of VRAM margin. Sampling at T>0 randomizes tokens and flattens
@@ -580,8 +617,8 @@ out to be worth more than a tok/s.
 ### "The model forgets its context" was the engine dying
 
 Agent sessions (a VS Code coding assistant, and a terminal agent) would loop:
-re-running the same first step — *"Let me start by exploring the codebase
-structure"* — as if the conversation history were empty. The obvious suspects
+re-running the same first step (*"Let me start by exploring the codebase
+structure"*) as if the conversation history were empty. The obvious suspects
 are client-side truncation or a broken chat template.
 
 It was neither. **Every `chat/completions` 500 in the logs coincides exactly
@@ -595,14 +632,14 @@ with an engine death:**
 
 83 of 86 agent requests returned 200; the three failures were those deaths. A
 dead turn leaves a failed or empty assistant message in the client's history,
-and GLM's chat template renders that as a *fresh* thread — so the model
+and GLM's chat template renders that as a *fresh* thread, so the model
 genuinely re-plans from zero. What looks like amnesia is a crash. (Fixed by the
 same two changes as § *Stability*.)
 
-**The diagnostic order that worked — verify the server before blaming the
+**The diagnostic order that worked: verify the server before blaming the
 client.** One direct request to the server, outside the agent, answered four
 questions at once: is `finish_reason` right (`tool_calls`), is `content` empty
-because reasoning leaked into it (no — reasoning came back in its own field),
+because reasoning leaked into it (no: reasoning came back in its own field),
 are the `tool_calls` well-formed (yes). Server exonerated in a single request;
 everything after that was aimed at the logs instead of the client.
 
@@ -620,8 +657,8 @@ Two genuine client-side misconfigurations turned up alongside it:
 
 ### `reasoning_effort`, measured
 
-GLM-5.3's chat template accepts exactly three values — **`low`, `high`, `max`**
-— and it is a *soft system line*, not a token budget. Anything else (unset, a
+GLM-5.3's chat template accepts exactly three values (**`low`, `high`, `max`**),
+and it is a *soft system line*, not a token budget. Anything else (unset, a
 typo, the plausible-looking `medium`) **silently becomes `max`**. That is a trap:
 the default is the most expensive setting, and nothing tells you.
 
@@ -636,7 +673,7 @@ Measured on one hard problem:
 Two consequences:
 
 - **Thinking budget is not what makes turns blank.** Even `max` spent 1,812
-  reasoning tokens — 7.2% of a 32,768-token output budget. Blank turns come from
+  reasoning tokens, 7.2% of a 32,768-token output budget. Blank turns come from
   clients sending a small *per-request* `max_tokens`: at 512, `max` produces an
   empty turn (all budget spent thinking) while `high` still answers.
 - **Use `high` for agent and tool loops**, where many cheap turns beat a few
@@ -654,9 +691,9 @@ machine and closed; none of it is speculation.
 | idea | why it seemed good | measured verdict |
 |---|---|---|
 | **Native FP4 MoE kernels** (FlashInfer CUTLASS, vLLM CUTLASS, b12x) | Marlin logs *"your GPU does not have native support for FP4"*, so its dequant looked like the stall | **Marlin is the fastest**, at every batch size: 77.4 µs at M=1 vs 99.8 / 110.0 / **409.4**. b12x served end-to-end at 1.2–1.3 tok/s. And two of them are *silently wrong* on SM120 (RUNNING bug 7) |
-| **CPU co-execution of offloaded experts** (FreeToken-style hybrid) | Use idle CPU instead of PCIe | **0.895x — a regression.** Host RAM is 64.6 GB/s here, only 1.15x PCIe. The published wins come from server boards at ~178 GB/s |
-| **GPUDirect Storage / NVMe as an additive path** | More ingress bandwidth | Dead — it converges on the same x16 ingress |
-| **LRU / temporal expert caching** | The literature shows wins on Mixtral-class models | **9.0% hit rate** against 5.6% at random. GLM activates 8 of 288 (2.8%) — far too sparse |
+| **CPU co-execution of offloaded experts** (FreeToken-style hybrid) | Use idle CPU instead of PCIe | **0.895x, a regression.** Host RAM is 64.6 GB/s here, only 1.15x PCIe. The published wins come from server boards at ~178 GB/s |
+| **GPUDirect Storage / NVMe as an additive path** | More ingress bandwidth | Dead: it converges on the same x16 ingress |
+| **LRU / temporal expert caching** | The literature shows wins on Mixtral-class models | **9.0% hit rate** against 5.6% at random. GLM activates 8 of 288 (2.8%), far too sparse |
 | **Water-filling per-layer slot budgets** | Some layers are more skewed than others | **+0.07 pp** of hit rate. The layers' hot *sets* differ but their distribution *shapes* are alike, so uniform allocation is already optimal |
 | **Re-profiling the hot set on real mixed traffic** | The shipped profile came from one prose prompt at T=0 | **Worse on everything**: 13.02 vs 15.77 prose. Sampling at T>0 flattens routing, blurring the very skew the profile captures |
 | **MTP depth 4** | More tokens per expert fetch | **Worse** (10.77 → 8.72). Acceptance nearly halves because GLM re-runs one MTP layer per draft step |
@@ -664,21 +701,21 @@ machine and closed; none of it is speculation.
 | **Raising `--gpu-memory-utilization`** | The usual way to find VRAM | **Byte-identical results.** `KV_BYTES` is explicit and weights + cache are fixed; there is no slack to redistribute |
 | **Shrinking `--max-num-batched-tokens`** | The cheap way to buy long-context headroom | **4096 kills the engine on the first request.** Closed (§ *Stability*) |
 | **Reserving staging buffers before the cap check** | Makes vLLM's memory profiling see the hot cache and fail honestly at startup | Startup became correct and *serving* broke with an illegal memory access. **Reverted** |
-| **The native SM120 sparse-MLA attention backend** | Stop running a Hopper kernel on Blackwell | **Refuses this model** — it expects DeepSeek's `qk_rope_head_dim=64` / 576-wide query; GLM-5.3 is NoPE |
-| **FP8 for the 18 GiB of BF16 dense weights** | The profiler's second-largest term, ~5–6 ms/token | Measures **~31 dB SNR** — those are genuine BF16 masters, not upcast FP8, so it is a real quality cost — and **no pre-quantized checkpoint fits** (a full-FP8 build is ~331 GB against ~278 GB of total memory here) |
+| **The native SM120 sparse-MLA attention backend** | Stop running a Hopper kernel on Blackwell | **Refuses this model**: it expects DeepSeek's `qk_rope_head_dim=64` / 576-wide query; GLM-5.3 is NoPE |
+| **FP8 for the 18 GiB of BF16 dense weights** | The profiler's second-largest term, ~5–6 ms/token | Measures **~31 dB SNR**: those are genuine BF16 masters, not upcast FP8, so it is a real quality cost, and **no pre-quantized checkpoint fits** (a full-FP8 build is ~331 GB against ~278 GB of total memory here) |
 | **Router pruning to top-6 of 8** | +24%, and it works | **Rejected on quality.** Repetition loops (*"Jupiter (planet) (planet) (planet)"*) and word-salad explanations. Simple facts survive, which is what makes it dangerous on a spot check |
 
 And one *analysis* mistake that cost more than any of them: summing per-expert
 routing counts **across** layers said routing was near-uniform and capped every
 caching idea at ~1.15x. Grouped **per layer**, the same raw data shows the
-hottest 36% of a layer's experts serving 75% of its fetches — which is the entire
+hottest 36% of a layer's experts serving 75% of its fetches, which is the entire
 13.5 → 16.5 tok/s win. One `groupby` was the difference between a closed branch
 and the result.
 
 ### Deliberately not shipped
 
 **Router pruning.** GLM routes top-8; fetching only the 6 highest-weighted
-experts cuts PCIe traffic and measures **20.48 tok/s vs 16.50 — +24%**. It is
+experts cuts PCIe traffic and measures **20.48 tok/s vs 16.50, +24%**. It is
 implemented, it is CUDA-graph-safe, and it is **off by default and will stay
 off**, because output quality visibly degrades. This model is used for work where
 a hallucination is expensive, so it does not trade quality for speed. Set
@@ -687,34 +724,6 @@ a hallucination is expensive, so it does not trade quality for speed. Set
 **The quality-neutral ceiling on this hardware is therefore ~16–17 tok/s.**
 Reaching 25 requires stacking pruning *and* FP8 dense weights, and both change
 model outputs.
-
----
-
-## Document map
-
-| file | what it is |
-|---|---|
-| [**RUNNING-GLM53-ON-ONE-GPU.md**](RUNNING-GLM53-ON-ONE-GPU.md) | Getting it to run **correctly**: build constraints, memory layout, and the eight bugs — including one that produces no error at all. Start here. |
-| [**OPTIMIZING-GLM53-ON-ONE-GPU.md**](OPTIMIZING-GLM53-ON-ONE-GPU.md) | Getting it to run **fast**: the measured cost model, the gather kernel, hot-expert pinning, prefill grouping, stability, and the configuration knobs that do nothing. |
-| [**FURTHER-OPTIMIZATION-RESEARCH.md**](FURTHER-OPTIMIZATION-RESEARCH.md) | What is left, and what has since been struck off. Every 2026-09-01 recommendation now carries its measured verdict, which makes it a scorecard of predictions against outcomes. |
-| [**LAB-NOTEBOOK.md**](LAB-NOTEBOOK.md) | The chronological account: false starts, the mistakes that cost the most, and the operational traps. Read this one if you are going to do this yourself. |
-| [**FINDINGS.md**](FINDINGS.md) | One-page condensed version of RUNNING. |
-| `GLM53-SM120.patch` | All source changes needed to make the model run on SM120. |
-| `serve.sh` | The original (pre-optimization) launcher, kept because it is the *minimal correct* configuration. Superseded for speed by `serve-opt.sh`, which lives in the vLLM working tree. |
-| `glm53-llamacpp-run.sh` | An abandoned llama.cpp/GGUF route, kept for reference. |
-| `artifacts/` | Raw measurement logs referenced above — currently `prefill-fresh-2026-09-02.txt`. |
-
-The optimization itself is three files in the vLLM working tree, not in this
-repository (they are patches against a fork that is itself unreleased):
-
-- `model_executor/offloader/dma_stage.py` — the Triton gather kernel, the
-  hot-expert cache, the profile recorder.
-- `model_executor/layers/fused_moe/experts/marlin_moe.py` — the hook into
-  vLLM's MoE path, the bounds checks, the grouped-prefill group walk
-  (`_prefill_groups_enabled`, and the `topk_ids.shape[0] >= 48` gate), and the
-  opt-in router pruning.
-- `serve-opt.sh` — every tuned default, each with the measurement that justifies
-  it in a comment. If you read one file, read this one.
 
 ---
 
@@ -733,12 +742,12 @@ repository (they are patches against a fork that is itself unreleased):
   continuous serving.
 - **The long-context ceiling is a measured point, not a guarantee.** 304,800
   tokens prefilled at 54 hot slots with 6.2 GiB free. Anything that consumes
-  VRAM — a second CUDA process, more hot slots, concurrency above
-  `--max-num-seqs 1` — moves that line, and it moves *silently* until a prompt
+  VRAM (a second CUDA process, more hot slots, concurrency above
+  `--max-num-seqs 1`) moves that line, and it moves *silently* until a prompt
   dies.
 - One optimization was withdrawn for a reason that turned out to be wrong, and
-  has not been re-examined: a **masked-group prefill variant** — which skips the
-  experts a chunk does not route to instead of staging all 288 — measured
+  has not been re-examined: a **masked-group prefill variant**, which skips the
+  experts a chunk does not route to instead of staging all 288, measured
   **0.36 s TTFT on the 14-token prompt**, against **0.85 s** for the zero-copy
   path that ships and 2.05 s for ungated grouping. It was removed for
   "run-to-run nondeterminism" that the baseline has as well (§ *Prefill*), so it
@@ -750,7 +759,7 @@ repository (they are patches against a fork that is itself unreleased):
   and serving can later die with `CUDA out of memory. Tried to allocate
   124.00 MiB` on a 95 GiB card. The principled fix made startup honest and
   serving broken, and was reverted. Real headroom comes only from fewer hot
-  slots or a higher offload — which is why the shipped slot count has walked
+  slots or a higher offload, which is why the shipped slot count has walked
   68 → 66 → 62 → 54.
 - One correctness defect is known and unfixed: **fused-`w13` scale collapse**,
   which affects *all* modelopt NVFP4 MoE checkpoints, not just this one. See
@@ -766,3 +775,8 @@ against [vLLM](https://github.com/vllm-project/vllm) (Apache-2.0) and are
 included here as `GLM53-SM120.patch`. Model weights, the vLLM fork, and
 FlashInfer are each governed by their own licenses; nothing in this repository
 redistributes any of them.
+
+---
+
+<picture><source media="(prefers-color-scheme: dark)" srcset="assets/mark-dark.svg"><img src="assets/mark-light.svg" width="16" height="16" alt=""></picture>
+<sub>**Real numbers, failures left in.** One of the [open-source tools of RL Alpha Labs](https://rlalphalabs.com/tools/), built by [pctablet505](https://github.com/pctablet505).</sub>
